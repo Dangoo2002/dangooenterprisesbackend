@@ -32,8 +32,8 @@ const upload = multer({ storage: storage }).array('images', 3); // Accept up to 
 // Dynamic CORS configuration based on the environment
 const allowedOrigins = [
   'http://localhost:3000', 
-  'https://dangooenterprises.vercel.app/', 
-  'https://www.main-bvxea6i-rhb3ntha7eiio.us.platformsh.site' 
+  'https://dangooenterprises.vercel.app', 
+  'https://dangooenterprisesbackend.vercel.app' 
 ];
 
 const corsOptions = {
