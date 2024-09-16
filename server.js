@@ -29,26 +29,27 @@ db.connect((err) => {
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage }).array('images', 3); // Accept up to 3 images
 
-// Dynamic CORS configuration based on the environment
+
 const allowedOrigins = [
+  'http://localhost:3000',
   'https://dangooenterprises.vercel.app', 
-  
+  'https://dangooenterprisesbackend.vercel.app' 
 ];
 
 const corsOptions = {
   origin: (origin, callback) => {
-    if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
-      callback(null, true);
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true); // Allow request
     } else {
-      callback(new Error('Not allowed by CORS'));
+      callback(new Error('Not allowed by CORS')); // Deny request
     }
   },
-  credentials: true, 
+  credentials: true, // Allow credentials such as cookies
   methods: 'GET,POST,PUT,DELETE',
   allowedHeaders: 'Content-Type,Authorization'
 };
 
-app.use(cors(corsOptions)); 
+app.use(cors(corsOptions)); // Apply the CORS middleware
 
 
 app.post('/signup', (req, res) => {
