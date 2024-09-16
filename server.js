@@ -31,9 +31,8 @@ const upload = multer({ storage: storage }).array('images', 3); // Accept up to 
 
 // Dynamic CORS configuration based on the environment
 const allowedOrigins = [
-  'http://localhost:3000', 
   'https://dangooenterprises.vercel.app', 
-  'https://dangooenterprisesbackend.vercel.app' 
+  
 ];
 
 const corsOptions = {
@@ -44,14 +43,14 @@ const corsOptions = {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true, // Allow credentials such as cookies
+  credentials: true, 
   methods: 'GET,POST,PUT,DELETE',
   allowedHeaders: 'Content-Type,Authorization'
 };
 
 app.use(cors(corsOptions)); 
 
-// Signup route
+
 app.post('/signup', (req, res) => {
   const { email, password, confirmPassword } = req.body;
   if (password !== confirmPassword) {
