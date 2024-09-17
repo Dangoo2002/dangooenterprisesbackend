@@ -273,7 +273,7 @@ app.post('/api/products', (req, res) => {
   });
 });
 
-
+// GET /api/products
 app.get('/api/products', (req, res) => {
   const categoryId = req.query.categoryId;  
   let sql = `
@@ -296,6 +296,7 @@ app.get('/api/products', (req, res) => {
       return res.status(500).json({ success: false, message: 'Failed to fetch products' });
     }
 
+    console.log('Results from DB:', results); 
     const productsMap = {};
     results.forEach(row => {
       if (!productsMap[row.id]) {
@@ -318,7 +319,6 @@ app.get('/api/products', (req, res) => {
     res.json(products);
   });
 });
-
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
