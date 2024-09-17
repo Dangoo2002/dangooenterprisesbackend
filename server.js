@@ -277,7 +277,7 @@ app.post('/api/products', (req, res) => {
 app.get('/api/products', (req, res) => {
   const categoryId = req.query.categoryId;  
   let sql = `
-    SELECT p.id, p.title, p.description, p.price, pi.image, c.name as category_name
+    SELECT p.id, p.title, p.description, p.price, p.is_new, pi.image, c.name as category_name
     FROM products p
     LEFT JOIN product_images pi ON p.id = pi.product_id
     LEFT JOIN categories c ON p.category_id = c.id
@@ -304,6 +304,7 @@ app.get('/api/products', (req, res) => {
           title: row.title,
           description: row.description,
           price: row.price,
+          is_new: row.is_new,  // Ensure `is_new` is included
           category: row.category_name, 
           images: []
         };
@@ -318,7 +319,7 @@ app.get('/api/products', (req, res) => {
   });
 });
 
-// Start the backend server
+
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
