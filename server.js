@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 const mysql = require('mysql2');
 const multer = require('multer');
 require('dotenv').config();
+const bcrypt = require('bcrypt');
 
 const app = express();
 app.use(express.json());
@@ -73,6 +74,37 @@ app.post('/signup', (req, res) => {
   });
 });
 
+app.post('/loginadmin', async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+  
+    const [users] = await db.promise().query('SELECT * FROM users WHERE email = ?', [email]);
+
+    
+    if (users.length === 0) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
+
+    const user = users[0];
+
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
+
+    
+    res.json({
+      success: true,
+      message: 'Login successful',
+      user: { id: user.id, email: user.email },
+    });
+  } catch (error) {
+    
+    res.status(500).json({ success: false, message: 'Login failed', error: error.message });
+  }
+});
 // Login route
 app.post('/login', (req, res) => {
   const { email, password } = req.body;
