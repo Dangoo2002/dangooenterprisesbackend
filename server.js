@@ -240,16 +240,16 @@ app.post('/api/products', (req, res) => {
       return res.status(500).json({ success: false, message: 'Upload error: ' + err.message });
     }
 
-    const { title, description, price, category_id } = req.body;  // Add category_id to the request body
+    const { title, description, price, category_id, isNew } = req.body;  // Add isNew to the request body
     const images = req.files;
 
     if (!images || images.length === 0) {
       return res.status(400).json({ success: false, message: 'No images uploaded' });
     }
 
-    // Insert product with category_id
-    const productSql = 'INSERT INTO products (title, description, price, category_id) VALUES (?, ?, ?, ?)';
-    db.query(productSql, [title, description, price, category_id], (err, result) => {
+    // Insert product with isNew flag
+    const productSql = 'INSERT INTO products (title, description, price, category_id, is_new) VALUES (?, ?, ?, ?, ?)';
+    db.query(productSql, [title, description, price, category_id, isNew], (err, result) => {
       if (err) {
         console.error('Error adding product:', err.message);
         return res.status(500).json({ success: false, message: 'Failed to add product' });
@@ -272,6 +272,7 @@ app.post('/api/products', (req, res) => {
     });
   });
 });
+
 
 app.get('/api/products', (req, res) => {
   const categoryId = req.query.categoryId;  
