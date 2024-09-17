@@ -31,7 +31,7 @@ db.connect((err) => {
 
 
 const storage = multer.memoryStorage();
-const upload = multer({ storage: storage }).array('images', 3); // Accept up to 3 images
+const upload = multer({ storage: storage }).array('images', 3); 
 
 
 const allowedOrigins = [
@@ -43,17 +43,17 @@ const allowedOrigins = [
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true); // Allow request
+      callback(null, true); 
     } else {
-      callback(new Error('Not allowed by CORS')); // Deny request
+      callback(new Error('Not allowed by CORS')); 
     }
   },
-  credentials: true, // Allow credentials such as cookies
+  credentials: true, 
   methods: 'GET,POST,PUT,DELETE',
   allowedHeaders: 'Content-Type,Authorization'
 };
 
-app.use(cors(corsOptions)); // Apply the CORS middleware
+app.use(cors(corsOptions)); 
 
 
 app.post('/signup', (req, res) => {
