@@ -3,6 +3,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const mysql = require('mysql2');
 const multer = require('multer');
+require('dotenv').config();
 
 const app = express();
 app.use(express.json());
