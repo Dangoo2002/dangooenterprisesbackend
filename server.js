@@ -74,37 +74,7 @@ app.post('/signup', (req, res) => {
   });
 });
 
-app.post('/loginadmin', async (req, res) => {
-  const { email, password } = req.body;
 
-  try {
-  
-    const [users] = await db.promise().query('SELECT * FROM users WHERE email = ?', [email]);
-
-    
-    if (users.length === 0) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
-    }
-
-    const user = users[0];
-
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
-    }
-
-    
-    res.json({
-      success: true,
-      message: 'Login successful',
-      user: { id: user.id, email: user.email },
-    });
-  } catch (error) {
-    
-    res.status(500).json({ success: false, message: 'Login failed', error: error.message });
-  }
-});
 // Login route
 app.post('/login', (req, res) => {
   const { email, password } = req.body;
@@ -125,7 +95,26 @@ app.post('/login', (req, res) => {
   });
 });
 
-// Cart add route
+//admin login
+app.post('/loginadmin', (req, res) => {
+  const { email, password } = req.body;
+  const sql = 'SELECT * FROM users WHERE email = ? AND password = ?';
+  db.query(sql, [email, password], (error, results) => {
+    if (error) {
+      res.status(500).send(error);
+    } else if (results.length > 0) {
+      const user = results[0];
+      res.json({
+        success: true,
+        message: 'Login successful',
+        user
+      });
+    } else {
+      res.status(401).send('Invalid email or password');
+    }
+  });
+});
+
 app.post('/cart/add', (req, res) => {
   const { user_id, item_id, quantity } = req.body;
   const sql = 'INSERT INTO cart (user_id, item_id, quantity) VALUES (?, ?, ?)';
