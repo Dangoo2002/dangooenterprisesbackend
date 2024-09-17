@@ -1,20 +1,21 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const mysql = require('mysql');
+const mysql = require('mysql2');
 const multer = require('multer');
 
 const app = express();
 app.use(express.json());
 app.use(bodyParser.json());
-const port = process.env.PORT || 3002;
+const port = process.env.PORT || 26689;
 
-// Database connection
+
 const db = mysql.createConnection({
-  host: 'localhost',
-  user: 'root',
-  password: '',
-  database: 'dangooenterprise',
+  host: process.env.MYSQL_HOST,
+  user: process.env.MYSQL_USER,
+  password: process.env.MYSQL_PASSWORD,
+  database: process.env.MYSQL_DATABASE,
+  port: process.env.MYSQL_PORT,
 });
 
 db.connect((err) => {
@@ -25,7 +26,9 @@ db.connect((err) => {
   }
 });
 
-// Multer storage setup for images
+
+
+
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage }).array('images', 3); // Accept up to 3 images
 
