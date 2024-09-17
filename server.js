@@ -67,7 +67,7 @@ app.post('/signup', (req, res) => {
   db.query(sql, [email, password, confirmPassword], (err, result) => {
     if (err) {
       console.error('Database error: ' + err.message);
-      return res.status(500).json({ success: false, message: 'Registration failed' });
+      return res.status(500).json({ success: false, message: 'Registration failed! Email already used.' });
     } else {
       return res.json({ success: true, message: 'Registration successful' });
     }
