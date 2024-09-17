@@ -179,7 +179,59 @@ app.post('/order/place', (req, res) => {
   });
 });
 
-// Product API for file upload
+app.get('/api/category/:category', (req, res) => {
+  const { category } = req.params;
+
+  const categoryMap = {
+    'phones-laptops': 1,
+    'wifi-routers': 2,
+    'beds': 3,
+    'sofa-couches': 4,
+    'woofers-tv': 5,
+    'tables': 6,
+    'kitchen-utensils': 7,
+  };
+
+  const categoryId = categoryMap[category];
+
+  if (!categoryId) {
+    return res.status(400).json({ success: false, message: 'Invalid category' });
+  }
+
+  const sql = `
+    SELECT p.id, p.title, p.description, p.price, pi.image
+    FROM products p
+    LEFT JOIN product_images pi ON p.id = pi.product_id
+    WHERE p.category_id = ?
+  `;
+
+  db.query(sql, [categoryId], (err, results) => {
+    if (err) {
+      console.error('Error fetching products:', err.message);
+      return res.status(500).json({ success: false, message: 'Failed to fetch products' });
+    }
+
+    const productsMap = {};
+    results.forEach(row => {
+      if (!productsMap[row.id]) {
+        productsMap[row.id] = {
+          id: row.id,
+          title: row.title,
+          description: row.description,
+          price: row.price,
+          images: []
+        };
+      }
+      if (row.image) {
+        productsMap[row.id].images.push(`data:image/jpeg;base64,${row.image.toString('base64')}`);
+      }
+    });
+
+    const products = Object.values(productsMap);
+    res.json(products);
+  });
+});
+
 app.post('/api/products', (req, res) => {
   upload(req, res, (err) => {
     if (err instanceof multer.MulterError) {
@@ -188,15 +240,16 @@ app.post('/api/products', (req, res) => {
       return res.status(500).json({ success: false, message: 'Upload error: ' + err.message });
     }
 
-    const { title, description, price } = req.body;
+    const { title, description, price, category_id } = req.body;  // Add category_id to the request body
     const images = req.files;
 
     if (!images || images.length === 0) {
       return res.status(400).json({ success: false, message: 'No images uploaded' });
     }
 
-    const productSql = 'INSERT INTO products (title, description, price) VALUES (?, ?, ?)';
-    db.query(productSql, [title, description, price], (err, result) => {
+    // Insert product with category_id
+    const productSql = 'INSERT INTO products (title, description, price, category_id) VALUES (?, ?, ?, ?)';
+    db.query(productSql, [title, description, price, category_id], (err, result) => {
       if (err) {
         console.error('Error adding product:', err.message);
         return res.status(500).json({ success: false, message: 'Failed to add product' });
@@ -220,37 +273,47 @@ app.post('/api/products', (req, res) => {
   });
 });
 
-// Product retrieval route
 app.get('/api/products', (req, res) => {
-  const sql = `
-    SELECT p.id, p.title, p.description, p.price, pi.image
+  const categoryId = req.query.categoryId;  
+  let sql = `
+    SELECT p.id, p.title, p.description, p.price, pi.image, c.name as category_name
     FROM products p
     LEFT JOIN product_images pi ON p.id = pi.product_id
+    LEFT JOIN categories c ON p.category_id = c.id
   `;
-  db.query(sql, (err, results) => {
+
+  const queryParams = [];
+
+  if (categoryId) {
+    sql += ` WHERE p.category_id = ?`;
+    queryParams.push(categoryId);
+  }
+
+  db.query(sql, queryParams, (err, results) => {
     if (err) {
       console.error('Error fetching products:', err.message);
-      res.status(500).json({ success: false, message: 'Failed to fetch products' });
-    } else {
-      const productsMap = {};
-      results.forEach(row => {
-        if (!productsMap[row.id]) {
-          productsMap[row.id] = {
-            id: row.id,
-            title: row.title,
-            description: row.description,
-            price: row.price,
-            images: []
-          };
-        }
-        if (row.image) {
-          productsMap[row.id].images.push(`data:image/jpeg;base64,${row.image.toString('base64')}`);
-        }
-      });
-
-      const products = Object.values(productsMap);
-      res.json(products);
+      return res.status(500).json({ success: false, message: 'Failed to fetch products' });
     }
+
+    const productsMap = {};
+    results.forEach(row => {
+      if (!productsMap[row.id]) {
+        productsMap[row.id] = {
+          id: row.id,
+          title: row.title,
+          description: row.description,
+          price: row.price,
+          category: row.category_name, 
+          images: []
+        };
+      }
+      if (row.image) {
+        productsMap[row.id].images.push(`data:image/jpeg;base64,${row.image.toString('base64')}`);
+      }
+    });
+
+    const products = Object.values(productsMap);
+    res.json(products);
   });
 });
 
