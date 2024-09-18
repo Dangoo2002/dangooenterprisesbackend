@@ -33,7 +33,7 @@ const upload = multer({ storage: storage }).array('images', 3);
 const allowedOrigins = [
   'http://localhost:3000',
   'https://dangooenterprises.vercel.app',
-  'https://dangooenterprisesbackend.vercel.app'
+  'https://dangooenterprisesbackend.vercel.app',
 ];
 
 const corsOptions = {
@@ -46,90 +46,82 @@ const corsOptions = {
   },
   credentials: true,
   methods: 'GET,POST,PUT,DELETE',
-  allowedHeaders: 'Content-Type,Authorization'
+  allowedHeaders: 'Content-Type,Authorization',
 };
 
 app.use(cors(corsOptions));
 
-// Signup route with password hashing
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword } = req.body;
+
+  
   if (password !== confirmPassword) {
     return res.status(400).json({ success: false, message: 'Passwords do not match' });
   }
 
   try {
+
     const hashedPassword = await bcrypt.hash(password, 10);
+
+    
     const sql = 'INSERT INTO signup (email, password) VALUES (?, ?)';
     db.query(sql, [email, hashedPassword], (err, result) => {
       if (err) {
+        if (err.code === 'ER_DUP_ENTRY') {
+          return res.status(400).json({ success: false, message: 'Email is already registered' });
+        }
         console.error('Database error: ' + err.message);
-        return res.status(500).json({ success: false, message: 'Registration failed! Email already used.' });
+        return res.status(500).json({ success: false, message: 'Registration failed due to a database error' });
       } else {
-        return res.json({ success: true, message: 'Registration successful' });
+        return res.status(201).json({ success: true, message: 'Registration successful' });
       }
     });
   } catch (error) {
-    console.error('Hashing error: ' + error.message);
-    return res.status(500).json({ success: false, message: 'Registration failed' });
+    console.error('Error in signup process:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
-// Login route with password comparison
+
 app.post('/login', (req, res) => {
   const { email, password } = req.body;
-  const sql = 'SELECT * FROM signup WHERE email = ?';
-  db.query(sql, [email], async (error, results) => {
+  const sql = 'SELECT * FROM signup WHERE email = ? AND password = ?';
+  db.query(sql, [email, password], (error, results) => {
     if (error) {
       res.status(500).send(error);
     } else if (results.length > 0) {
       const user = results[0];
-      try {
-        if (await bcrypt.compare(password, user.password)) {
-          res.json({
-            success: true,
-            message: 'Login successful',
-            user: { id: user.id, email: user.email }
-          });
-        } else {
-          res.status(401).send('Invalid email or password');
-        }
-      } catch (error) {
-        res.status(500).send('Login error');
-      }
+      res.json({
+        success: true,
+        message: 'Login successful',
+        user,
+      });
     } else {
       res.status(401).send('Invalid email or password');
     }
   });
 });
 
-// Admin login with password comparison
+
 app.post('/loginadmin', (req, res) => {
   const { email, password } = req.body;
-  const sql = 'SELECT * FROM users WHERE email = ?';
-  db.query(sql, [email], async (error, results) => {
+  const sql = 'SELECT * FROM users WHERE email = ? AND password = ?';
+  db.query(sql, [email, password], (error, results) => {
     if (error) {
       res.status(500).send(error);
     } else if (results.length > 0) {
       const user = results[0];
-      try {
-        if (await bcrypt.compare(password, user.password)) {
-          res.json({
-            success: true,
-            message: 'Login successful',
-            user: { id: user.id, email: user.email }
-          });
-        } else {
-          res.status(401).send('Invalid email or password');
-        }
-      } catch (error) {
-        res.status(500).send('Login error');
-      }
+      res.json({
+        success: true,
+        message: 'Login successful',
+        user,
+      });
     } else {
       res.status(401).send('Invalid email or password');
     }
   });
 });
+
 
 app.post('/cart/add', (req, res) => {
   const { user_id, item_id, quantity } = req.body;
@@ -144,7 +136,7 @@ app.post('/cart/add', (req, res) => {
   });
 });
 
-// Cart retrieval route
+
 app.get('/cart/:userId', (req, res) => {
   const userId = req.params.userId;
   const sql = `
@@ -162,7 +154,7 @@ app.get('/cart/:userId', (req, res) => {
   });
 });
 
-// Order placement route
+
 app.post('/order/place', (req, res) => {
   const { user_id, items, total_price } = req.body;
   const insertOrder = 'INSERT INTO orders (user_id, total_price, payment_status) VALUES (?, ?, "pending")';
@@ -235,7 +227,7 @@ app.get('/api/category/:category', (req, res) => {
           title: row.title,
           description: row.description,
           price: row.price,
-          images: []
+          images: [],
         };
       }
       if (row.image) {
@@ -248,6 +240,7 @@ app.get('/api/category/:category', (req, res) => {
   });
 });
 
+
 app.post('/api/products', (req, res) => {
   upload(req, res, (err) => {
     if (err instanceof multer.MulterError) {
@@ -256,14 +249,13 @@ app.post('/api/products', (req, res) => {
       return res.status(500).json({ success: false, message: 'Upload error: ' + err.message });
     }
 
-    const { title, description, price, category_id, isNew } = req.body;  // Add isNew to the request body
+    const { title, description, price, category_id, isNew } = req.body;
     const images = req.files;
 
     if (!images || images.length === 0) {
       return res.status(400).json({ success: false, message: 'No images uploaded' });
     }
 
-    // Insert product with isNew flag
     const productSql = 'INSERT INTO products (title, description, price, category_id, is_new) VALUES (?, ?, ?, ?, ?)';
     db.query(productSql, [title, description, price, category_id, isNew], (err, result) => {
       if (err) {
@@ -289,9 +281,9 @@ app.post('/api/products', (req, res) => {
   });
 });
 
-// GET /api/products
+
 app.get('/api/products', (req, res) => {
-  const categoryId = req.query.categoryId;  
+  const categoryId = req.query.categoryId;
   let sql = `
     SELECT p.id, p.title, p.description, p.price, p.is_new, pi.image, c.name as category_name
     FROM products p
@@ -312,17 +304,18 @@ app.get('/api/products', (req, res) => {
       return res.status(500).json({ success: false, message: 'Failed to fetch products' });
     }
 
+    console.log('Results from DB:', results);
     const productsMap = {};
-    results.forEach(row => {
+    results.forEach((row) => {
       if (!productsMap[row.id]) {
         productsMap[row.id] = {
           id: row.id,
           title: row.title,
           description: row.description,
           price: row.price,
-          is_new: row.is_new,  // Ensure `is_new` is included
-          category: row.category_name, 
-          images: []
+          is_new: row.is_new,
+          category: row.category_name,
+          images: [],
         };
       }
       if (row.image) {
