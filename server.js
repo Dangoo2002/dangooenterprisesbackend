@@ -11,7 +11,6 @@ app.use(express.json());
 app.use(bodyParser.json());
 const port = process.env.PORT || 26689;
 
-
 const db = mysql.createConnection({
   host: process.env.MYSQL_HOST,
   user: process.env.MYSQL_USER,
@@ -28,87 +27,104 @@ db.connect((err) => {
   }
 });
 
-
-
-
 const storage = multer.memoryStorage();
-const upload = multer({ storage: storage }).array('images', 3); 
-
+const upload = multer({ storage: storage }).array('images', 3);
 
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://dangooenterprises.vercel.app', 
-  'https://dangooenterprisesbackend.vercel.app' 
+  'https://dangooenterprises.vercel.app',
+  'https://dangooenterprisesbackend.vercel.app'
 ];
 
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true); 
+      callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS')); 
+      callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true, 
+  credentials: true,
   methods: 'GET,POST,PUT,DELETE',
   allowedHeaders: 'Content-Type,Authorization'
 };
 
-app.use(cors(corsOptions)); 
+app.use(cors(corsOptions));
 
-
-app.post('/signup', (req, res) => {
+// Signup route with password hashing
+app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword } = req.body;
   if (password !== confirmPassword) {
     return res.status(400).json({ success: false, message: 'Passwords do not match' });
   }
 
-  const sql = 'INSERT INTO signup (email, password, confirmPassword) VALUES (?, ?, ?)';
-  db.query(sql, [email, password, confirmPassword], (err, result) => {
-    if (err) {
-      console.error('Database error: ' + err.message);
-      return res.status(500).json({ success: false, message: 'Registration failed! Email already used.' });
-    } else {
-      return res.json({ success: true, message: 'Registration successful' });
-    }
-  });
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const sql = 'INSERT INTO signup (email, password) VALUES (?, ?)';
+    db.query(sql, [email, hashedPassword], (err, result) => {
+      if (err) {
+        console.error('Database error: ' + err.message);
+        return res.status(500).json({ success: false, message: 'Registration failed! Email already used.' });
+      } else {
+        return res.json({ success: true, message: 'Registration successful' });
+      }
+    });
+  } catch (error) {
+    console.error('Hashing error: ' + error.message);
+    return res.status(500).json({ success: false, message: 'Registration failed' });
+  }
 });
 
-
-// Login route
+// Login route with password comparison
 app.post('/login', (req, res) => {
   const { email, password } = req.body;
-  const sql = 'SELECT * FROM signup WHERE email = ? AND password = ?';
-  db.query(sql, [email, password], (error, results) => {
+  const sql = 'SELECT * FROM signup WHERE email = ?';
+  db.query(sql, [email], async (error, results) => {
     if (error) {
       res.status(500).send(error);
     } else if (results.length > 0) {
       const user = results[0];
-      res.json({
-        success: true,
-        message: 'Login successful',
-        user
-      });
+      try {
+        if (await bcrypt.compare(password, user.password)) {
+          res.json({
+            success: true,
+            message: 'Login successful',
+            user: { id: user.id, email: user.email }
+          });
+        } else {
+          res.status(401).send('Invalid email or password');
+        }
+      } catch (error) {
+        res.status(500).send('Login error');
+      }
     } else {
       res.status(401).send('Invalid email or password');
     }
   });
 });
 
-//admin login
+// Admin login with password comparison
 app.post('/loginadmin', (req, res) => {
   const { email, password } = req.body;
-  const sql = 'SELECT * FROM users WHERE email = ? AND password = ?';
-  db.query(sql, [email, password], (error, results) => {
+  const sql = 'SELECT * FROM users WHERE email = ?';
+  db.query(sql, [email], async (error, results) => {
     if (error) {
       res.status(500).send(error);
     } else if (results.length > 0) {
       const user = results[0];
-      res.json({
-        success: true,
-        message: 'Login successful',
-        user
-      });
+      try {
+        if (await bcrypt.compare(password, user.password)) {
+          res.json({
+            success: true,
+            message: 'Login successful',
+            user: { id: user.id, email: user.email }
+          });
+        } else {
+          res.status(401).send('Invalid email or password');
+        }
+      } catch (error) {
+        res.status(500).send('Login error');
+      }
     } else {
       res.status(401).send('Invalid email or password');
     }
@@ -296,7 +312,6 @@ app.get('/api/products', (req, res) => {
       return res.status(500).json({ success: false, message: 'Failed to fetch products' });
     }
 
-    console.log('Results from DB:', results); 
     const productsMap = {};
     results.forEach(row => {
       if (!productsMap[row.id]) {
