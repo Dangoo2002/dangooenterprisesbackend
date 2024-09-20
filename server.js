@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 const mysql = require('mysql2/promise'); 
 const multer = require('multer');
 require('dotenv').config();
+const bcrypt = require('bcrypt');
 
 const app = express();
 app.use(express.json());
@@ -68,11 +69,14 @@ app.post('/signup', async (req, res) => {
   }
 
   try {
-
     const connection = await pool.getConnection();
     try {
+      // Hash the password
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+
       const sql = 'INSERT INTO signup (email, password) VALUES (?, ?)';
-      await connection.query(sql, [email, password]);
+      await connection.query(sql, [email, hashedPassword]);
       connection.release();
       return res.json({ success: true, message: 'Registration successful' });
     } catch (err) {
@@ -89,7 +93,6 @@ app.post('/signup', async (req, res) => {
   }
 });
 
-
 app.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
@@ -102,7 +105,10 @@ app.post('/login', async (req, res) => {
     if (results.length > 0) {
       const user = results[0];
 
-      if (password === user.password) {
+      // Compare the provided password with the stored hash
+      const passwordMatch = await bcrypt.compare(password, user.password);
+
+      if (passwordMatch) {
         return res.json({
           success: true,
           message: 'Login successful',
