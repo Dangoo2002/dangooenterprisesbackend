@@ -399,6 +399,170 @@ app.get('/phones_laptops', async (req, res) => {
 });
 
 
+app.get('/wifi_routers', async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+
+    
+    const sql = `SELECT id, title, description, price, is_new, category_id, image FROM wifi_routers`;
+    const [results] = await connection.query(sql);
+    connection.release();
+
+   
+    const productsWithImages = results.map(product => ({
+      id: product.id,
+      title: product.title,
+      description: product.description,
+      price: product.price,
+      is_new: product.is_new, 
+      category_id: product.category_id,
+      image: product.image ? `data:image/jpeg;base64,${product.image.toString('base64')}` : null // Convert BLOB to base64
+    }));
+
+    return res.json({ success: true, products: productsWithImages });
+  } catch (error) {
+    console.error('Error fetching phones_laptops products:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch products' });
+  }
+});
+
+app.get('/beds', async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+
+    
+    const sql = `SELECT id, title, description, price, is_new, category_id, image FROM beds`;
+    const [results] = await connection.query(sql);
+    connection.release();
+
+   
+    const productsWithImages = results.map(product => ({
+      id: product.id,
+      title: product.title,
+      description: product.description,
+      price: product.price,
+      is_new: product.is_new, 
+      category_id: product.category_id,
+      image: product.image ? `data:image/jpeg;base64,${product.image.toString('base64')}` : null // Convert BLOB to base64
+    }));
+
+    return res.json({ success: true, products: productsWithImages });
+  } catch (error) {
+    console.error('Error fetching phones_laptops products:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch products' });
+  }
+});
+
+
+app.get('/sofa_couches', async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+
+    
+    const sql = `SELECT id, title, description, price, is_new, category_id, image FROM sofa_couches`;
+    const [results] = await connection.query(sql);
+    connection.release();
+
+   
+    const productsWithImages = results.map(product => ({
+      id: product.id,
+      title: product.title,
+      description: product.description,
+      price: product.price,
+      is_new: product.is_new, 
+      category_id: product.category_id,
+      image: product.image ? `data:image/jpeg;base64,${product.image.toString('base64')}` : null // Convert BLOB to base64
+    }));
+
+    return res.json({ success: true, products: productsWithImages });
+  } catch (error) {
+    console.error('Error fetching phones_laptops products:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch products' });
+  }
+});
+
+
+app.get('/woofers_tv', async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+
+    
+    const sql = `SELECT id, title, description, price, is_new, category_id, image FROM woofers_tv`;
+    const [results] = await connection.query(sql);
+    connection.release();
+
+   
+    const productsWithImages = results.map(product => ({
+      id: product.id,
+      title: product.title,
+      description: product.description,
+      price: product.price,
+      is_new: product.is_new, 
+      category_id: product.category_id,
+      image: product.image ? `data:image/jpeg;base64,${product.image.toString('base64')}` : null // Convert BLOB to base64
+    }));
+
+    return res.json({ success: true, products: productsWithImages });
+  } catch (error) {
+    console.error('Error fetching phones_laptops products:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch products' });
+  }
+});
+
+app.get('/tables', async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+
+    
+    const sql = `SELECT id, title, description, price, is_new, category_id, image FROM tables`;
+    const [results] = await connection.query(sql);
+    connection.release();
+
+   
+    const productsWithImages = results.map(product => ({
+      id: product.id,
+      title: product.title,
+      description: product.description,
+      price: product.price,
+      is_new: product.is_new, 
+      category_id: product.category_id,
+      image: product.image ? `data:image/jpeg;base64,${product.image.toString('base64')}` : null // Convert BLOB to base64
+    }));
+
+    return res.json({ success: true, products: productsWithImages });
+  } catch (error) {
+    console.error('Error fetching phones_laptops products:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch products' });
+  }
+});
+
+app.get('/kitchen_utensils', async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+
+    
+    const sql = `SELECT id, title, description, price, is_new, category_id, image FROM kitchen_utensils`;
+    const [results] = await connection.query(sql);
+    connection.release();
+
+   
+    const productsWithImages = results.map(product => ({
+      id: product.id,
+      title: product.title,
+      description: product.description,
+      price: product.price,
+      is_new: product.is_new, 
+      category_id: product.category_id,
+      image: product.image ? `data:image/jpeg;base64,${product.image.toString('base64')}` : null // Convert BLOB to base64
+    }));
+
+    return res.json({ success: true, products: productsWithImages });
+  } catch (error) {
+    console.error('Error fetching phones_laptops products:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch products' });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
