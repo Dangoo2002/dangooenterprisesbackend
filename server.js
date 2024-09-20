@@ -374,13 +374,13 @@ app.get('/api/products', async (req, res) => {
 app.get('/phones_laptops', async (req, res) => {
   try {
     const connection = await pool.getConnection();
-    
 
+    
     const sql = `SELECT id, title, description, price, is_new, category_id, image FROM phones_laptops`;
     const [results] = await connection.query(sql);
     connection.release();
 
-
+   
     const productsWithImages = results.map(product => ({
       id: product.id,
       title: product.title,
@@ -390,7 +390,6 @@ app.get('/phones_laptops', async (req, res) => {
       category_id: product.category_id,
       image: product.image ? `data:image/jpeg;base64,${product.image.toString('base64')}` : null // Convert BLOB to base64
     }));
-
 
     return res.json({ success: true, products: productsWithImages });
   } catch (error) {
