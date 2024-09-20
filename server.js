@@ -1,31 +1,40 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const mysql = require('mysql2');
+const mysql = require('mysql2/promise'); 
 const multer = require('multer');
 require('dotenv').config();
-const bcrypt = require('bcrypt');
 
 const app = express();
 app.use(express.json());
 app.use(bodyParser.json());
+
 const port = process.env.PORT || 26689;
 
-const db = mysql.createConnection({
+const pool = mysql.createPool({
   host: process.env.MYSQL_HOST,
   user: process.env.MYSQL_USER,
   password: process.env.MYSQL_PASSWORD,
   database: process.env.MYSQL_DATABASE,
   port: process.env.MYSQL_PORT,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
 });
 
-db.connect((err) => {
-  if (err) {
-    console.error('Failed to connect to the database: ' + err.message);
-  } else {
-    console.log('Connected to the database');
+// Log connection success or failure
+async function checkDbConnection() {
+  try {
+    const connection = await pool.getConnection();
+    console.log("Connected to the MySQL database successfully!");
+    connection.release();  // Release the connection back to the pool
+  } catch (error) {
+    console.error("Failed to connect to the MySQL database:", error.message);
   }
-});
+}
+
+// Call the checkDbConnection function at startup
+checkDbConnection();
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage }).array('images', 3);
@@ -33,7 +42,7 @@ const upload = multer({ storage: storage }).array('images', 3);
 const allowedOrigins = [
   'http://localhost:3000',
   'https://dangooenterprises.vercel.app',
-  'https://dangooenterprisesbackend.vercel.app',
+  'https://dangooenterprisesbackend.vercel.app'
 ];
 
 const corsOptions = {
@@ -46,148 +55,169 @@ const corsOptions = {
   },
   credentials: true,
   methods: 'GET,POST,PUT,DELETE',
-  allowedHeaders: 'Content-Type,Authorization',
+  allowedHeaders: 'Content-Type,Authorization'
 };
 
 app.use(cors(corsOptions));
 
+// Signup route - store passwords in plain text
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword } = req.body;
 
-  
   if (password !== confirmPassword) {
     return res.status(400).json({ success: false, message: 'Passwords do not match' });
   }
 
   try {
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    
-    const sql = 'INSERT INTO signup (email, password) VALUES (?, ?)';
-    db.query(sql, [email, hashedPassword], (err, result) => {
-      if (err) {
-        if (err.code === 'ER_DUP_ENTRY') {
-          return res.status(400).json({ success: false, message: 'Email is already registered' });
-        }
-        console.error('Database error: ' + err.message);
-        return res.status(500).json({ success: false, message: 'Registration failed due to a database error' });
-      } else {
-        return res.status(201).json({ success: true, message: 'Registration successful' });
+    // Store the plain text password directly
+    const connection = await pool.getConnection();
+    try {
+      const sql = 'INSERT INTO signup (email, password) VALUES (?, ?)';
+      await connection.query(sql, [email, password]);
+      connection.release();
+      return res.json({ success: true, message: 'Registration successful' });
+    } catch (err) {
+      connection.release();
+      if (err.code === 'ER_DUP_ENTRY') {
+        return res.status(400).json({ success: false, message: 'Email already exists' });
       }
-    });
+      console.error('Database error: ' + err.message);
+      return res.status(500).json({ success: false, message: 'Registration failed' });
+    }
   } catch (error) {
-    console.error('Error in signup process:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error' });
+    console.error('Error: ' + error.message);
+    return res.status(500).json({ success: false, message: 'Registration failed' });
   }
 });
 
-
-app.post('/login', (req, res) => {
+// Login route - compare passwords in plain text
+app.post('/login', async (req, res) => {
   const { email, password } = req.body;
-  const sql = 'SELECT * FROM signup WHERE email = ? AND password = ?';
-  db.query(sql, [email, password], (error, results) => {
-    if (error) {
-      res.status(500).send(error);
-    } else if (results.length > 0) {
+
+  try {
+    const connection = await pool.getConnection();
+    const sql = 'SELECT * FROM signup WHERE email = ?';
+    const [results] = await connection.query(sql, [email]);
+    connection.release();
+
+    if (results.length > 0) {
       const user = results[0];
-      res.json({
-        success: true,
-        message: 'Login successful',
-        user,
-      });
+
+      if (password === user.password) {
+        return res.json({
+          success: true,
+          message: 'Login successful',
+          user: { id: user.id, email: user.email }
+        });
+      } else {
+        return res.status(401).json({ success: false, message: 'Invalid email or password' });
+      }
     } else {
-      res.status(401).send('Invalid email or password');
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
-  });
+  } catch (error) {
+    console.error('Login error:', error.message);
+    return res.status(500).json({ success: false, message: 'Login failed' });
+  }
 });
 
-
-app.post('/loginadmin', (req, res) => {
+// Admin login - no password hashing
+app.post('/loginadmin', async (req, res) => {
   const { email, password } = req.body;
-  const sql = 'SELECT * FROM users WHERE email = ? AND password = ?';
-  db.query(sql, [email, password], (error, results) => {
-    if (error) {
-      res.status(500).send(error);
-    } else if (results.length > 0) {
+
+  try {
+    const connection = await pool.getConnection();
+    const sql = 'SELECT * FROM users WHERE email = ?';
+    const [results] = await connection.query(sql, [email]);
+    connection.release();
+
+    if (results.length > 0) {
       const user = results[0];
-      res.json({
-        success: true,
-        message: 'Login successful',
-        user,
-      });
+
+      // Compare plain text password
+      if (password === user.password) {
+        return res.json({
+          success: true,
+          message: 'Login successful',
+          user: { id: user.id, email: user.email }
+        });
+      } else {
+        return res.status(401).json({ success: false, message: 'Invalid email or password' });
+      }
     } else {
-      res.status(401).send('Invalid email or password');
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
-  });
+  } catch (error) {
+    console.error('Admin login error:', error.message);
+    return res.status(500).json({ success: false, message: 'Admin login failed' });
+  }
 });
 
-
-app.post('/cart/add', (req, res) => {
+// Add to cart
+app.post('/cart/add', async (req, res) => {
   const { user_id, item_id, quantity } = req.body;
-  const sql = 'INSERT INTO cart (user_id, item_id, quantity) VALUES (?, ?, ?)';
-  db.query(sql, [user_id, item_id, quantity], (error, result) => {
-    if (error) {
-      console.error('Database error: ' + error.message);
-      res.status(500).json({ success: false, message: 'Failed to add item to cart' });
-    } else {
-      res.json({ success: true, message: 'Item added to cart' });
-    }
-  });
+
+  try {
+    const connection = await pool.getConnection();
+    const sql = 'INSERT INTO cart (user_id, item_id, quantity) VALUES (?, ?, ?)';
+    await connection.query(sql, [user_id, item_id, quantity]);
+    connection.release();
+    return res.json({ success: true, message: 'Item added to cart' });
+  } catch (error) {
+    console.error('Database error:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to add item to cart' });
+  }
 });
 
-
-app.get('/cart/:userId', (req, res) => {
+// Cart retrieval
+app.get('/cart/:userId', async (req, res) => {
   const userId = req.params.userId;
-  const sql = `
-    SELECT c.cart_id, i.name, i.price, c.quantity 
-    FROM cart c 
-    JOIN items i ON c.item_id = i.item_id 
-    WHERE c.user_id = ?
-  `;
-  db.query(sql, [userId], (error, results) => {
-    if (error) {
-      res.status(500).send(error);
-    } else {
-      res.json({ success: true, cart: results });
-    }
-  });
+
+  try {
+    const connection = await pool.getConnection();
+    const sql = `
+      SELECT c.cart_id, i.name, i.price, c.quantity 
+      FROM cart c 
+      JOIN items i ON c.item_id = i.item_id 
+      WHERE c.user_id = ?
+    `;
+    const [results] = await connection.query(sql, [userId]);
+    connection.release();
+
+    return res.json({ success: true, cart: results });
+  } catch (error) {
+    console.error('Database error:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve cart' });
+  }
 });
 
-
-app.post('/order/place', (req, res) => {
+// Order placement
+app.post('/order/place', async (req, res) => {
   const { user_id, items, total_price } = req.body;
-  const insertOrder = 'INSERT INTO orders (user_id, total_price, payment_status) VALUES (?, ?, "pending")';
 
-  db.query(insertOrder, [user_id, total_price], (error, result) => {
-    if (error) {
-      console.error('Order creation failed: ' + error.message);
-      res.status(500).json({ success: false, message: 'Failed to create order' });
-    } else {
-      const orderId = result.insertId;
-      const orderItems = items.map(item => [orderId, item.item_id, item.quantity, item.price_at_purchase]);
+  try {
+    const connection = await pool.getConnection();
+    const insertOrder = 'INSERT INTO orders (user_id, total_price, payment_status) VALUES (?, ?, "pending")';
+    const [orderResult] = await connection.query(insertOrder, [user_id, total_price]);
 
-      const insertOrderItems = 'INSERT INTO order_items (order_id, item_id, quantity, price_at_purchase) VALUES ?';
+    const orderId = orderResult.insertId;
+    const orderItems = items.map(item => [orderId, item.item_id, item.quantity, item.price_at_purchase]);
 
-      db.query(insertOrderItems, [orderItems], (error) => {
-        if (error) {
-          console.error('Failed to add order items: ' + error.message);
-          res.status(500).json({ success: false, message: 'Failed to add order items' });
-        } else {
-          db.query('DELETE FROM cart WHERE user_id = ?', [user_id], (error) => {
-            if (error) {
-              res.status(500).json({ success: false, message: 'Failed to clear cart' });
-            } else {
-              res.json({ success: true, message: 'Order placed successfully' });
-            }
-          });
-        }
-      });
-    }
-  });
+    const insertOrderItems = 'INSERT INTO order_items (order_id, item_id, quantity, price_at_purchase) VALUES ?';
+    await connection.query(insertOrderItems, [orderItems]);
+
+    await connection.query('DELETE FROM cart WHERE user_id = ?', [user_id]);
+
+    connection.release();
+    return res.json({ success: true, message: 'Order placed successfully' });
+  } catch (error) {
+    console.error('Order error:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to place order' });
+  }
 });
 
-app.get('/api/category/:category', (req, res) => {
+// API to get products by category
+app.get('/api/category/:category', async (req, res) => {
   const { category } = req.params;
 
   const categoryMap = {
@@ -201,23 +231,19 @@ app.get('/api/category/:category', (req, res) => {
   };
 
   const categoryId = categoryMap[category];
-
   if (!categoryId) {
     return res.status(400).json({ success: false, message: 'Invalid category' });
   }
 
-  const sql = `
-    SELECT p.id, p.title, p.description, p.price, pi.image
-    FROM products p
-    LEFT JOIN product_images pi ON p.id = pi.product_id
-    WHERE p.category_id = ?
-  `;
-
-  db.query(sql, [categoryId], (err, results) => {
-    if (err) {
-      console.error('Error fetching products:', err.message);
-      return res.status(500).json({ success: false, message: 'Failed to fetch products' });
-    }
+  try {
+    const connection = await pool.getConnection();
+    const sql = `
+      SELECT p.id, p.title, p.description, p.price, pi.image
+      FROM products p
+      LEFT JOIN product_images pi ON p.id = pi.product_id
+      WHERE p.category_id = ?
+    `;
+    const [results] = await connection.query(sql, [categoryId]);
 
     const productsMap = {};
     results.forEach(row => {
@@ -227,7 +253,7 @@ app.get('/api/category/:category', (req, res) => {
           title: row.title,
           description: row.description,
           price: row.price,
-          images: [],
+          images: []
         };
       }
       if (row.image) {
@@ -236,54 +262,17 @@ app.get('/api/category/:category', (req, res) => {
     });
 
     const products = Object.values(productsMap);
-    res.json(products);
-  });
+    connection.release();
+    return res.json(products);
+  } catch (error) {
+    console.error('Product fetch error:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch products' });
+  }
 });
 
-
-app.post('/api/products', (req, res) => {
-  upload(req, res, (err) => {
-    if (err instanceof multer.MulterError) {
-      return res.status(500).json({ success: false, message: 'Multer error: ' + err.message });
-    } else if (err) {
-      return res.status(500).json({ success: false, message: 'Upload error: ' + err.message });
-    }
-
-    const { title, description, price, category_id, isNew } = req.body;
-    const images = req.files;
-
-    if (!images || images.length === 0) {
-      return res.status(400).json({ success: false, message: 'No images uploaded' });
-    }
-
-    const productSql = 'INSERT INTO products (title, description, price, category_id, is_new) VALUES (?, ?, ?, ?, ?)';
-    db.query(productSql, [title, description, price, category_id, isNew], (err, result) => {
-      if (err) {
-        console.error('Error adding product:', err.message);
-        return res.status(500).json({ success: false, message: 'Failed to add product' });
-      }
-
-      const productId = result.insertId;
-      const imageSql = 'INSERT INTO product_images (product_id, image) VALUES ?';
-      const imageValues = images.map((image) => {
-        return [productId, image.buffer];
-      });
-
-      db.query(imageSql, [imageValues], (imageErr) => {
-        if (imageErr) {
-          console.error('Error inserting images:', imageErr.message);
-          return res.status(500).json({ success: false, message: 'Failed to add product images' });
-        }
-
-        res.status(200).json({ success: true, message: 'Product and images added successfully!' });
-      });
-    });
-  });
-});
-
-
-app.get('/api/products', (req, res) => {
-  const categoryId = req.query.categoryId;
+// GET /api/products
+app.get('/api/products', async (req, res) => {
+  const categoryId = req.query.categoryId;  
   let sql = `
     SELECT p.id, p.title, p.description, p.price, p.is_new, pi.image, c.name as category_name
     FROM products p
@@ -298,24 +287,21 @@ app.get('/api/products', (req, res) => {
     queryParams.push(categoryId);
   }
 
-  db.query(sql, queryParams, (err, results) => {
-    if (err) {
-      console.error('Error fetching products:', err.message);
-      return res.status(500).json({ success: false, message: 'Failed to fetch products' });
-    }
+  try {
+    const connection = await pool.getConnection();
+    const [results] = await connection.query(sql, queryParams);
 
-    console.log('Results from DB:', results);
     const productsMap = {};
-    results.forEach((row) => {
+    results.forEach(row => {
       if (!productsMap[row.id]) {
         productsMap[row.id] = {
           id: row.id,
           title: row.title,
           description: row.description,
           price: row.price,
-          is_new: row.is_new,
-          category: row.category_name,
-          images: [],
+          is_new: row.is_new,  
+          category: row.category_name, 
+          images: []
         };
       }
       if (row.image) {
@@ -324,10 +310,15 @@ app.get('/api/products', (req, res) => {
     });
 
     const products = Object.values(productsMap);
-    res.json(products);
-  });
+    connection.release();
+    return res.json(products);
+  } catch (error) {
+    console.error('Error fetching products:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch products' });
+  }
 });
 
+// Start the server
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
