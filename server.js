@@ -374,11 +374,11 @@ app.get('/api/products', async (req, res) => {
 app.get('/phones_laptops', async (req, res) => {
   try {
     const connection = await pool.getConnection();
-    const sql = `SELECT id, title, description, price, is_new, image FROM phones_laptops`;
+    const sql = `SELECT id, title, description, price, is_new, category_id, image FROM phones_laptops`;
     const [results] = await connection.query(sql);
     connection.release();
 
-
+  
     const productsWithImages = results.map(product => ({
       ...product,
       image: product.image ? `data:image/jpeg;base64,${product.image.toString('base64')}` : null
@@ -390,6 +390,7 @@ app.get('/phones_laptops', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to fetch products' });
   }
 });
+
 
 
 
