@@ -269,6 +269,59 @@ app.post('/api/products', upload, async (req, res) => {
   }
 });
 
+app.post('/api/products', upload, async (req, res) => {
+  const { title, description, price, category, isNew } = req.body;
+  const images = req.files;
+
+  // Map category to a table name for the category-specific table
+  const categoryTableMap = {
+    'phones_laptops': 'phones_laptops',
+    'wifi_routers': 'wifi_routers',
+    'beds': 'beds',
+    'sofa_couches': 'sofa_couches',
+    'woofers_tv': 'woofers_tv',
+    'tables': 'tables',
+    'kitchen_utensils': 'kitchen_utensils'
+  };
+
+  const categoryTableName = categoryTableMap[category];
+
+  // Ensure the category exists and the table name is valid
+  if (!categoryTableName) {
+    return res.status(400).json({ success: false, message: 'Invalid category' });
+  }
+
+  try {
+    const connection = await pool.getConnection();
+
+    // Insert the product into the centralized 'products' table
+    const insertProductQuery = `INSERT INTO products (title, description, price, is_new, category_id) VALUES (?, ?, ?, ?, ?)`;
+    const categoryId = Object.values(categoryTableMap).indexOf(categoryTableName) + 1;
+    const [productResult] = await connection.query(insertProductQuery, [title, description, price, isNew, categoryId]);
+    const productId = productResult.insertId;
+
+    // Insert the product into the category-specific table (like 'phones_laptops')
+    const insertCategoryProductQuery = `INSERT INTO ${categoryTableName} (id, title, description, price, is_new, category_id) VALUES (?, ?, ?, ?, ?, ?)`;
+    await connection.query(insertCategoryProductQuery, [productId, title, description, price, isNew, categoryId]);
+
+    // Insert images into both the 'product_images' table and the category-specific table
+    if (images && images.length > 0) {
+      const insertImageQuery = `INSERT INTO product_images (product_id, image) VALUES (?, ?)`;
+      const insertCategoryImageQuery = `UPDATE ${categoryTableName} SET image = ? WHERE id = ?`;
+
+      for (let image of images) {
+        await connection.query(insertImageQuery, [productId, image.buffer]); // Insert image into 'product_images'
+        await connection.query(insertCategoryImageQuery, [image.buffer, productId]); // Insert image into category-specific table
+      }
+    }
+
+    connection.release();
+    return res.json({ success: true, message: 'Product and images added successfully!' });
+  } catch (error) {
+    console.error('Database error:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to add product' });
+  }
+});
 
 app.get('/api/products', async (req, res) => {
   const categoryId = req.query.categoryId;  
@@ -324,6 +377,8 @@ app.get('/phones_laptops', async (req, res) => {
     const sql = `SELECT id, title, description, price, is_new, image FROM phones_laptops`;
     const [results] = await connection.query(sql);
     connection.release();
+
+
     const productsWithImages = results.map(product => ({
       ...product,
       image: product.image ? `data:image/jpeg;base64,${product.image.toString('base64')}` : null
@@ -335,6 +390,7 @@ app.get('/phones_laptops', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to fetch products' });
   }
 });
+
 
 
 
