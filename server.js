@@ -224,15 +224,15 @@ app.get('/api/category/:category', async (req, res) => {
   const { category } = req.params;
 
   const categoryTableMap = {
-    'phones-laptops': 'phones_laptops',
-    'wifi-routers': 'wifi_routers',
+    'phones_laptops': 'phones_laptops',
+    'wifi_routers': 'wifi_routers',
     'beds': 'beds',
-    'sofa-couches': 'sofa_couches',
-    'woofers-tv': 'woofers_tv',
+    'sofa_couches': 'sofa_couches',
+    'woofers_tv': 'woofers_tv',
     'tables': 'tables',
-    'kitchen-utensils': 'kitchen_utensils'
+    'kitchen_utensils': 'kitchen_utensils'
   };
-
+  
   const tableName = categoryTableMap[category];
   
   if (!tableName) {
@@ -253,8 +253,9 @@ app.get('/api/category/:category', async (req, res) => {
 
 
 
-app.post('/api/products', async (req, res) => {
+app.post('/api/products', upload, async (req, res) => {
   const { title, description, price, category, isNew } = req.body;
+  const images = req.files; // Access uploaded images
 
   const categoryTableMap = {
     'phones_laptops': 'phones_laptops',
@@ -267,15 +268,27 @@ app.post('/api/products', async (req, res) => {
   };
 
   const tableName = categoryTableMap[category];
-  
+
   if (!tableName) {
     return res.status(400).json({ success: false, message: 'Invalid category' });
   }
 
   try {
     const connection = await pool.getConnection();
+
+    
     const sql = `INSERT INTO ${tableName} (title, description, price, is_new) VALUES (?, ?, ?, ?)`;
-    await connection.query(sql, [title, description, price, isNew]);
+    const [result] = await connection.query(sql, [title, description, price, isNew]);
+    const productId = result.insertId;
+
+    
+    if (images && images.length > 0) {
+      for (let image of images) {
+        const sqlImage = `INSERT INTO product_images (product_id, image) VALUES (?, ?)`;
+        await connection.query(sqlImage, [productId, image.buffer]); 
+      }
+    }
+
     connection.release();
     return res.json({ success: true, message: 'Product added successfully' });
   } catch (error) {
@@ -283,6 +296,7 @@ app.post('/api/products', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to add product' });
   }
 });
+
 
 
 app.get('/api/products', async (req, res) => {
