@@ -1,8 +1,9 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const mysql = require('mysql2/promise'); 
+const mysql = require('mysql2/promise');
 const multer = require('multer');
+const bcrypt = require('bcrypt');
 require('dotenv').config();
 
 const app = express();
@@ -22,18 +23,16 @@ const pool = mysql.createPool({
   queueLimit: 0
 });
 
-// Log connection success or failure
 async function checkDbConnection() {
   try {
     const connection = await pool.getConnection();
     console.log("Connected to the MySQL database successfully!");
-    connection.release();  // Release the connection back to the pool
+    connection.release();  
   } catch (error) {
     console.error("Failed to connect to the MySQL database:", error.message);
   }
 }
 
-// Call the checkDbConnection function at startup
 checkDbConnection();
 
 const storage = multer.memoryStorage();
@@ -60,7 +59,6 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Signup route - store passwords in plain text
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword } = req.body;
 
@@ -69,11 +67,14 @@ app.post('/signup', async (req, res) => {
   }
 
   try {
-    // Store the plain text password directly
     const connection = await pool.getConnection();
     try {
+      // Hash the password
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+
       const sql = 'INSERT INTO signup (email, password) VALUES (?, ?)';
-      await connection.query(sql, [email, password]);
+      await connection.query(sql, [email, hashedPassword]);
       connection.release();
       return res.json({ success: true, message: 'Registration successful' });
     } catch (err) {
@@ -90,7 +91,6 @@ app.post('/signup', async (req, res) => {
   }
 });
 
-// Login route - compare passwords in plain text
 app.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
@@ -103,7 +103,10 @@ app.post('/login', async (req, res) => {
     if (results.length > 0) {
       const user = results[0];
 
-      if (password === user.password) {
+      // Compare the provided password with the hashed password in the database
+      const passwordMatch = await bcrypt.compare(password, user.password);
+
+      if (passwordMatch) {
         return res.json({
           success: true,
           message: 'Login successful',
@@ -121,7 +124,6 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// Admin login - no password hashing
 app.post('/loginadmin', async (req, res) => {
   const { email, password } = req.body;
 
@@ -134,8 +136,10 @@ app.post('/loginadmin', async (req, res) => {
     if (results.length > 0) {
       const user = results[0];
 
-      // Compare plain text password
-      if (password === user.password) {
+      // Compare the provided password with the hashed password in the database
+      const passwordMatch = await bcrypt.compare(password, user.password);
+
+      if (passwordMatch) {
         return res.json({
           success: true,
           message: 'Login successful',
@@ -153,7 +157,6 @@ app.post('/loginadmin', async (req, res) => {
   }
 });
 
-// Add to cart
 app.post('/cart/add', async (req, res) => {
   const { user_id, item_id, quantity } = req.body;
 
@@ -169,7 +172,7 @@ app.post('/cart/add', async (req, res) => {
   }
 });
 
-// Cart retrieval
+
 app.get('/cart/:userId', async (req, res) => {
   const userId = req.params.userId;
 
@@ -191,7 +194,7 @@ app.get('/cart/:userId', async (req, res) => {
   }
 });
 
-// Order placement
+
 app.post('/order/place', async (req, res) => {
   const { user_id, items, total_price } = req.body;
 
@@ -216,7 +219,7 @@ app.post('/order/place', async (req, res) => {
   }
 });
 
-// API to get products by category
+
 app.get('/api/category/:category', async (req, res) => {
   const { category } = req.params;
 
@@ -270,7 +273,6 @@ app.get('/api/category/:category', async (req, res) => {
   }
 });
 
-// GET /api/products
 app.get('/api/products', async (req, res) => {
   const categoryId = req.query.categoryId;  
   let sql = `
@@ -318,7 +320,9 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// Start the server
+
+
+
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
