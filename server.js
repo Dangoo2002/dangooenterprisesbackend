@@ -318,7 +318,19 @@ app.get('/api/products', async (req, res) => {
 });
 
 
+app.get('/phones_laptops', async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+    const sql = `SELECT * FROM phones_laptops`;
+    const [results] = await connection.query(sql);
+    connection.release();
 
+    return res.json({ success: true, products: results });
+  } catch (error) {
+    console.error('Error fetching phones_laptops products:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch products' });
+  }
+});
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
