@@ -216,94 +216,46 @@ app.post('/order/place', async (req, res) => {
 });
 
 
-app.get('/api/category/:category', async (req, res) => {
-  const { category } = req.params;
-
-  const categoryMap = {
-    'phones-laptops': 1,
-    'wifi-routers': 2,
-    'beds': 3,
-    'sofa-couches': 4,
-    'woofers-tv': 5,
-    'tables': 6,
-    'kitchen-utensils': 7,
-  };
-
-  const categoryId = categoryMap[category];
-  if (!categoryId) {
-    return res.status(400).json({ success: false, message: 'Invalid category' });
-  }
-
-  try {
-    const connection = await pool.getConnection();
-    const sql = `
-      SELECT p.id, p.title, p.description, p.price, pi.image
-      FROM products p
-      LEFT JOIN product_images pi ON p.id = pi.product_id
-      WHERE p.category_id = ?
-    `;
-    const [results] = await connection.query(sql, [categoryId]);
-
-    const productsMap = {};
-    results.forEach(row => {
-      if (!productsMap[row.id]) {
-        productsMap[row.id] = {
-          id: row.id,
-          title: row.title,
-          description: row.description,
-          price: row.price,
-          images: []
-        };
-      }
-      if (row.image) {
-        productsMap[row.id].images.push(`data:image/jpeg;base64,${row.image.toString('base64')}`);
-      }
-    });
-
-    const products = Object.values(productsMap);
-    connection.release();
-    return res.json(products);
-  } catch (error) {
-    console.error('Product fetch error:', error.message);
-    return res.status(500).json({ success: false, message: 'Failed to fetch products' });
-  }
-});
-
-
 app.post('/api/products', upload, async (req, res) => {
   const { title, description, price, category, isNew } = req.body;
   const images = req.files;
 
-
-  const categoryMap = {
-    'phones_laptops': 1,
-    'wifi_routers': 2,
-    'beds': 3,
-    'sofa_couches': 4,
-    'woofers_tv': 5,
-    'tables': 6,
-    'kitchen_utensils': 7
+  // Map category to a table name for the category-specific table
+  const categoryTableMap = {
+    'phones_laptops': 'phones_laptops',
+    'wifi_routers': 'wifi_routers',
+    'beds': 'beds',
+    'sofa_couches': 'sofa_couches',
+    'woofers_tv': 'woofers_tv',
+    'tables': 'tables',
+    'kitchen_utensils': 'kitchen_utensils'
   };
 
-  const categoryId = categoryMap[category];
+  const categoryTableName = categoryTableMap[category];
 
-
-  if (!categoryId) {
+  // Ensure the category exists and the table name is valid
+  if (!categoryTableName) {
     return res.status(400).json({ success: false, message: 'Invalid category' });
   }
 
   try {
     const connection = await pool.getConnection();
 
-
+    // Insert the product into the centralized 'products' table
     const insertProductQuery = `INSERT INTO products (title, description, price, is_new, category_id) VALUES (?, ?, ?, ?, ?)`;
+    const categoryId = Object.values(categoryTableMap).indexOf(categoryTableName) + 1; // Simple mapping to category id
     const [productResult] = await connection.query(insertProductQuery, [title, description, price, isNew, categoryId]);
-    const productId = productResult.insertId; 
+    const productId = productResult.insertId; // Get the ID of the newly inserted product
+
+    // Insert the product into the category-specific table (like 'phones_laptops')
+    const insertCategoryProductQuery = `INSERT INTO ${categoryTableName} (id, title, description, price, is_new, category_id) VALUES (?, ?, ?, ?, ?, ?)`;
+    await connection.query(insertCategoryProductQuery, [productId, title, description, price, isNew, categoryId]);
+
+    // If images were uploaded, handle storing them in 'product_images'
     if (images && images.length > 0) {
       const insertImageQuery = `INSERT INTO product_images (product_id, image) VALUES (?, ?)`;
-
       for (let image of images) {
-        await connection.query(insertImageQuery, [productId, image.buffer]); 
+        await connection.query(insertImageQuery, [productId, image.buffer]); // Assuming image is stored as a blob
       }
     }
 
@@ -314,6 +266,7 @@ app.post('/api/products', upload, async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to add product' });
   }
 });
+
 
 
 
