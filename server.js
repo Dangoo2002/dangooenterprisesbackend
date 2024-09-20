@@ -1,9 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const mysql = require('mysql2/promise');
+const mysql = require('mysql2/promise'); 
 const multer = require('multer');
-const bcrypt = require('bcrypt');
 require('dotenv').config();
 
 const app = express();
@@ -22,6 +21,7 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0
 });
+
 
 async function checkDbConnection() {
   try {
@@ -59,6 +59,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword } = req.body;
 
@@ -67,14 +68,11 @@ app.post('/signup', async (req, res) => {
   }
 
   try {
+
     const connection = await pool.getConnection();
     try {
-      // Hash the password
-      const saltRounds = 10;
-      const hashedPassword = await bcrypt.hash(password, saltRounds);
-
       const sql = 'INSERT INTO signup (email, password) VALUES (?, ?)';
-      await connection.query(sql, [email, hashedPassword]);
+      await connection.query(sql, [email, password]);
       connection.release();
       return res.json({ success: true, message: 'Registration successful' });
     } catch (err) {
@@ -91,6 +89,7 @@ app.post('/signup', async (req, res) => {
   }
 });
 
+
 app.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
@@ -103,10 +102,7 @@ app.post('/login', async (req, res) => {
     if (results.length > 0) {
       const user = results[0];
 
-      // Compare the provided password with the hashed password in the database
-      const passwordMatch = await bcrypt.compare(password, user.password);
-
-      if (passwordMatch) {
+      if (password === user.password) {
         return res.json({
           success: true,
           message: 'Login successful',
@@ -124,6 +120,7 @@ app.post('/login', async (req, res) => {
   }
 });
 
+
 app.post('/loginadmin', async (req, res) => {
   const { email, password } = req.body;
 
@@ -136,10 +133,8 @@ app.post('/loginadmin', async (req, res) => {
     if (results.length > 0) {
       const user = results[0];
 
-      // Compare the provided password with the hashed password in the database
-      const passwordMatch = await bcrypt.compare(password, user.password);
-
-      if (passwordMatch) {
+    
+      if (password === user.password) {
         return res.json({
           success: true,
           message: 'Login successful',
@@ -156,6 +151,7 @@ app.post('/loginadmin', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Admin login failed' });
   }
 });
+
 
 app.post('/cart/add', async (req, res) => {
   const { user_id, item_id, quantity } = req.body;
@@ -223,81 +219,55 @@ app.post('/order/place', async (req, res) => {
 app.get('/api/category/:category', async (req, res) => {
   const { category } = req.params;
 
-  const categoryTableMap = {
-    'phones_laptops': 'phones_laptops',
-    'wifi_routers': 'wifi_routers',
-    'beds': 'beds',
-    'sofa_couches': 'sofa_couches',
-    'woofers_tv': 'woofers_tv',
-    'tables': 'tables',
-    'kitchen_utensils': 'kitchen_utensils'
+  const categoryMap = {
+    'phones-laptops': 1,
+    'wifi-routers': 2,
+    'beds': 3,
+    'sofa-couches': 4,
+    'woofers-tv': 5,
+    'tables': 6,
+    'kitchen-utensils': 7,
   };
-  
-  const tableName = categoryTableMap[category];
-  
-  if (!tableName) {
+
+  const categoryId = categoryMap[category];
+  if (!categoryId) {
     return res.status(400).json({ success: false, message: 'Invalid category' });
   }
 
   try {
     const connection = await pool.getConnection();
-    const sql = `SELECT * FROM ${tableName}`;
-    const [results] = await connection.query(sql);
+    const sql = `
+      SELECT p.id, p.title, p.description, p.price, pi.image
+      FROM products p
+      LEFT JOIN product_images pi ON p.id = pi.product_id
+      WHERE p.category_id = ?
+    `;
+    const [results] = await connection.query(sql, [categoryId]);
+
+    const productsMap = {};
+    results.forEach(row => {
+      if (!productsMap[row.id]) {
+        productsMap[row.id] = {
+          id: row.id,
+          title: row.title,
+          description: row.description,
+          price: row.price,
+          images: []
+        };
+      }
+      if (row.image) {
+        productsMap[row.id].images.push(`data:image/jpeg;base64,${row.image.toString('base64')}`);
+      }
+    });
+
+    const products = Object.values(productsMap);
     connection.release();
-    return res.json({ success: true, products: results });
+    return res.json(products);
   } catch (error) {
     console.error('Product fetch error:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to fetch products' });
   }
 });
-
-
-
-app.post('/api/products', upload, async (req, res) => {
-  const { title, description, price, category, isNew } = req.body;
-  const images = req.files; // Access uploaded images
-
-  const categoryTableMap = {
-    'phones_laptops': 'phones_laptops',
-    'wifi_routers': 'wifi_routers',
-    'beds': 'beds',
-    'sofa_couches': 'sofa_couches',
-    'woofers_tv': 'woofers_tv',
-    'tables': 'tables',
-    'kitchen_utensils': 'kitchen_utensils'
-  };
-
-  const tableName = categoryTableMap[category];
-
-  if (!tableName) {
-    return res.status(400).json({ success: false, message: 'Invalid category' });
-  }
-
-  try {
-    const connection = await pool.getConnection();
-
-    
-    const sql = `INSERT INTO ${tableName} (title, description, price, is_new) VALUES (?, ?, ?, ?)`;
-    const [result] = await connection.query(sql, [title, description, price, isNew]);
-    const productId = result.insertId;
-
-    
-    if (images && images.length > 0) {
-      for (let image of images) {
-        const sqlImage = `INSERT INTO product_images (product_id, image) VALUES (?, ?)`;
-        await connection.query(sqlImage, [productId, image.buffer]); 
-      }
-    }
-
-    connection.release();
-    return res.json({ success: true, message: 'Product added successfully' });
-  } catch (error) {
-    console.error('Database error:', error.message);
-    return res.status(500).json({ success: false, message: 'Failed to add product' });
-  }
-});
-
-
 
 app.get('/api/products', async (req, res) => {
   const categoryId = req.query.categoryId;  
