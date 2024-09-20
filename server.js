@@ -223,55 +223,67 @@ app.post('/order/place', async (req, res) => {
 app.get('/api/category/:category', async (req, res) => {
   const { category } = req.params;
 
-  const categoryMap = {
-    'phones-laptops': 1,
-    'wifi-routers': 2,
-    'beds': 3,
-    'sofa-couches': 4,
-    'woofers-tv': 5,
-    'tables': 6,
-    'kitchen-utensils': 7,
+  const categoryTableMap = {
+    'phones-laptops': 'phones_laptops',
+    'wifi-routers': 'wifi_routers',
+    'beds': 'beds',
+    'sofa-couches': 'sofa_couches',
+    'woofers-tv': 'woofers_tv',
+    'tables': 'tables',
+    'kitchen-utensils': 'kitchen_utensils'
   };
 
-  const categoryId = categoryMap[category];
-  if (!categoryId) {
+  const tableName = categoryTableMap[category];
+  
+  if (!tableName) {
     return res.status(400).json({ success: false, message: 'Invalid category' });
   }
 
   try {
     const connection = await pool.getConnection();
-    const sql = `
-      SELECT p.id, p.title, p.description, p.price, pi.image
-      FROM products p
-      LEFT JOIN product_images pi ON p.id = pi.product_id
-      WHERE p.category_id = ?
-    `;
-    const [results] = await connection.query(sql, [categoryId]);
-
-    const productsMap = {};
-    results.forEach(row => {
-      if (!productsMap[row.id]) {
-        productsMap[row.id] = {
-          id: row.id,
-          title: row.title,
-          description: row.description,
-          price: row.price,
-          images: []
-        };
-      }
-      if (row.image) {
-        productsMap[row.id].images.push(`data:image/jpeg;base64,${row.image.toString('base64')}`);
-      }
-    });
-
-    const products = Object.values(productsMap);
+    const sql = `SELECT * FROM ${tableName}`;
+    const [results] = await connection.query(sql);
     connection.release();
-    return res.json(products);
+    return res.json({ success: true, products: results });
   } catch (error) {
     console.error('Product fetch error:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to fetch products' });
   }
 });
+
+
+
+app.post('/api/products', async (req, res) => {
+  const { title, description, price, category, isNew } = req.body;
+
+  const categoryTableMap = {
+    'phones_laptops': 'phones_laptops',
+    'wifi_routers': 'wifi_routers',
+    'beds': 'beds',
+    'sofa_couches': 'sofa_couches',
+    'woofers_tv': 'woofers_tv',
+    'tables': 'tables',
+    'kitchen_utensils': 'kitchen_utensils'
+  };
+
+  const tableName = categoryTableMap[category];
+  
+  if (!tableName) {
+    return res.status(400).json({ success: false, message: 'Invalid category' });
+  }
+
+  try {
+    const connection = await pool.getConnection();
+    const sql = `INSERT INTO ${tableName} (title, description, price, is_new) VALUES (?, ?, ?, ?)`;
+    await connection.query(sql, [title, description, price, isNew]);
+    connection.release();
+    return res.json({ success: true, message: 'Product added successfully' });
+  } catch (error) {
+    console.error('Database error:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to add product' });
+  }
+});
+
 
 app.get('/api/products', async (req, res) => {
   const categoryId = req.query.categoryId;  
