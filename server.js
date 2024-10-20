@@ -524,6 +524,42 @@ app.get('/phones_laptops', async (req, res) => {
 });
 
 
+app.get('/api/:table/:id', async (req, res) => {
+  const { table, id } = req.params;
+
+  try {
+    const connection = await pool.getConnection();
+    const sql = `SELECT id, title, description, price, is_new, category_id, image FROM ?? WHERE id = ?`;
+    const [results] = await connection.query(sql, [table, id]);
+    connection.release();
+
+    if (results.length === 0) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    const product = results[0];
+    
+    
+    const productWithImage = {
+      id: product.id,
+      title: product.title,
+      description: product.description,
+      price: product.price,
+      is_new: product.is_new,
+      category_id: product.category_id,
+      image: product.image ? `data:image/jpeg;base64,${product.image.toString('base64')}` : null,
+    };
+
+    return res.json({ success: true, product: productWithImage });
+  } catch (error) {
+    console.error(`Error fetching product from table ${table}:`, error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch product' });
+  }
+});
+
+
+
+
 app.get('/wifi_routers', async (req, res) => {
   try {
     const connection = await pool.getConnection();
