@@ -539,7 +539,6 @@ app.get('/api/:table/:id', async (req, res) => {
 
     const product = results[0];
     
-    
     const productWithImage = {
       id: product.id,
       title: product.title,
@@ -550,12 +549,13 @@ app.get('/api/:table/:id', async (req, res) => {
       image: product.image ? `data:image/jpeg;base64,${product.image.toString('base64')}` : null,
     };
 
-    return res.json({ success: true, product: productWithImage });
+    return res.json({ success: true, product: productWithImage }); // Ensure success flag is included
   } catch (error) {
     console.error(`Error fetching product from table ${table}:`, error.message);
     return res.status(500).json({ success: false, message: 'Failed to fetch product' });
   }
 });
+
 
 
 
