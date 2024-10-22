@@ -263,6 +263,36 @@ app.get('/cart/:userId', async (req, res) => {
 });
 
 
+app.delete('/cart/:user_id/:item_id', async (req, res) => {
+  const { user_id, item_id } = req.params;
+
+  console.log('Deleting item from cart:', { user_id, item_id });
+
+  if (!user_id || !item_id) {
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
+  }
+
+  try {
+    const connection = await pool.getConnection();
+
+    const result = await connection.query(`
+      DELETE FROM cart WHERE user_id = ? AND item_id = ?`, 
+      [user_id, item_id]);
+
+    connection.release();
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Item not found in cart' });
+    }
+
+    console.log('Item deleted successfully:', { user_id, item_id });
+    return res.json({ success: true, message: 'Item removed from cart' });
+  } catch (error) {
+    console.error('Database error occurred:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to remove item from cart' });
+  }
+});
+
 
 app.post('/order/place', async (req, res) => {
   const { user_id, items, total_price } = req.body;
