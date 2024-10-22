@@ -163,7 +163,6 @@ app.post('/loginadmin', async (req, res) => {
 app.post('/cart/add', async (req, res) => {
   const { user_id, item_id, quantity } = req.body;
 
- 
   console.log('Incoming request to add to cart:', { user_id, item_id, quantity });
 
   if (!user_id || !item_id || !quantity) {
@@ -173,10 +172,14 @@ app.post('/cart/add', async (req, res) => {
 
   try {
     const connection = await pool.getConnection();
-
-
-    const [productResults] = await connection.query('SELECT title, description, price FROM products WHERE id = ?', [item_id]);
-
+    
+    // Fetch product details and image from the product_images table
+    const [productResults] = await connection.query(`
+      SELECT p.title, p.description, p.price, pi.image 
+      FROM products p 
+      LEFT JOIN product_images pi ON p.id = pi.product_id 
+      WHERE p.id = ?
+    `, [item_id]);
 
     console.log('Product results:', productResults);
 
@@ -188,10 +191,14 @@ app.post('/cart/add', async (req, res) => {
 
     const product = productResults[0];
 
+    // If the image is null, log the product info for debugging
+    if (!product.image) {
+      console.error('No image found for product:', product);
+    }
 
     const sql = `
-      INSERT INTO cart (user_id, item_id, title, description, price, quantity)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO cart (user_id, item_id, title, description, price, quantity, image)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE quantity = quantity + ?;
     `;
 
@@ -203,9 +210,11 @@ app.post('/cart/add', async (req, res) => {
       product.description,
       product.price,
       quantity,
-      quantity 
+      product.image || null,  // Image from product_images or null if not found
+      quantity
     ]);
 
+    // Insert item into the cart, including the image
     await connection.query(sql, [
       user_id,
       item_id,
@@ -213,6 +222,7 @@ app.post('/cart/add', async (req, res) => {
       product.description,
       product.price,
       quantity,
+      product.image || null,  // Insert image or leave it null
       quantity 
     ]);
 
@@ -227,15 +237,19 @@ app.post('/cart/add', async (req, res) => {
 
 
 
+
 app.get('/cart/:userId', async (req, res) => {
   const userId = req.params.userId;
 
   try {
     const connection = await pool.getConnection();
+    
+   
     const sql = `
-      SELECT id, title, description, price, quantity
-      FROM cart
-      WHERE user_id = ?
+      SELECT c.id, c.title, c.description, c.price, c.quantity, pi.image
+      FROM cart c
+      LEFT JOIN product_images pi ON c.item_id = pi.product_id
+      WHERE c.user_id = ?
     `;
 
     const [results] = await connection.query(sql, [userId]);
@@ -331,6 +345,10 @@ app.post('/api/products', upload.array('images', 10), async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to add product' });
   }
 });
+
+
+
+
 
 app.get('/api/products', async (req, res) => {
   const { search } = req.query;
