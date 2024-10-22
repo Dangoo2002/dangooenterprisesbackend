@@ -163,38 +163,64 @@ app.post('/loginadmin', async (req, res) => {
 app.post('/cart/add', async (req, res) => {
   const { user_id, item_id, quantity } = req.body;
 
+ 
+  console.log('Incoming request to add to cart:', { user_id, item_id, quantity });
+
+  if (!user_id || !item_id || !quantity) {
+    console.error('Missing required fields:', { user_id, item_id, quantity });
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
+  }
+
   try {
     const connection = await pool.getConnection();
 
-   
-    const [productResults] = await connection.query('SELECT title, description, price, image FROM products WHERE id = ?', [item_id]);
+
+    const [productResults] = await connection.query('SELECT title, description, price FROM products WHERE id = ?', [item_id]);
+
+
+    console.log('Product results:', productResults);
 
     if (productResults.length === 0) {
       connection.release();
+      console.error('Product not found for item_id:', item_id);
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
     const product = productResults[0];
 
-    
+
     const sql = `
-      INSERT INTO cart (user_id, item_id, title, description, price, image, quantity)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO cart (user_id, item_id, title, description, price, quantity)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE quantity = quantity + ?;
     `;
+
+    console.log('Executing SQL:', sql);
+    console.log('With parameters:', [
+      user_id,
+      item_id,
+      product.title,
+      product.description,
+      product.price,
+      quantity,
+      quantity 
+    ]);
+
     await connection.query(sql, [
       user_id,
       item_id,
       product.title,
       product.description,
       product.price,
-      product.image,
-      quantity
+      quantity,
+      quantity 
     ]);
 
     connection.release();
+    console.log('Item added to cart successfully:', { user_id, item_id });
     return res.json({ success: true, message: 'Item added to cart' });
   } catch (error) {
-    console.error('Database error:', error.message);
+    console.error('Database error occurred:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to add item to cart' });
   }
 });
@@ -207,7 +233,7 @@ app.get('/cart/:userId', async (req, res) => {
   try {
     const connection = await pool.getConnection();
     const sql = `
-      SELECT cart_id, title, description, price, image, quantity
+      SELECT id, title, description, price, quantity
       FROM cart
       WHERE user_id = ?
     `;
@@ -222,26 +248,6 @@ app.get('/cart/:userId', async (req, res) => {
   }
 });
 
-app.get('/cart/:userId', async (req, res) => {
-  const userId = req.params.userId;
-
-  try {
-    const connection = await pool.getConnection();
-    const sql = `
-      SELECT cart_id, title, description, price, 
-             TO_BASE64(image) AS image, quantity
-      FROM cart
-      WHERE user_id = ?
-    `;
-    const [results] = await connection.query(sql, [userId]);
-    connection.release();
-
-    return res.json({ success: true, cart: results });
-  } catch (error) {
-    console.error('Database error:', error.message);
-    return res.status(500).json({ success: false, message: 'Failed to fetch cart items' });
-  }
-});
 
 
 app.post('/order/place', async (req, res) => {
@@ -269,112 +275,6 @@ app.post('/order/place', async (req, res) => {
 });
 
 
-// Admin Deals Route - Save Deals with One Image for Each Deal
-// Admin Deals Route - Save Deals with One Image for Each Deal
-app.post('/api/admin/deals', upload.array('images', 10), async (req, res) => {
-  try {
-    console.log('Incoming POST request to /api/admin/deals');
-    console.log('Request body:', req.body);  // Form fields
-    console.log('Uploaded images:', req.files);  // Uploaded images
-
-    const { bigDeals, smallDeals } = req.body; // Deals data from the form
-    const images = req.files; // Uploaded images from the form
-
-    const connection = await pool.getConnection();
-
-    // Insert big deals with a single image
-    const bigDealPromises = bigDeals.map(async (deal, index) => {
-      const sql = `INSERT INTO big_deals (title, description, price, crossed_price) VALUES (?, ?, ?, ?)`;
-      const [result] = await connection.query(sql, [deal.title, deal.description, deal.price, deal.crossedPrice]);
-
-      const dealId = result.insertId; // Get the inserted deal's ID
-
-      // Insert a single image for the big deal
-      const image = images[index]; // Assume the first images correspond to big deals
-      if (image) {
-        const imageSql = `INSERT INTO deal_images (deal_id, deal_type, image) VALUES (?, 'big', ?)`;
-        await connection.query(imageSql, [dealId, image.buffer]);
-      }
-    });
-
-    // Insert small deals with a single image
-    const smallDealPromises = smallDeals.map(async (deal, index) => {
-      const sql = `INSERT INTO small_deals (description, price, crossed_price) VALUES (?, ?, ?)`;
-      const [result] = await connection.query(sql, [deal.description, deal.price, deal.crossedPrice]);
-
-      const dealId = result.insertId; // Get the inserted deal's ID
-
-      // Insert a single image for the small deal
-      const image = images[index + bigDeals.length]; // Images for small deals come after big deals
-      if (image) {
-        const imageSql = `INSERT INTO deal_images (deal_id, deal_type, image) VALUES (?, 'small', ?)`;
-        await connection.query(imageSql, [dealId, image.buffer]);
-      }
-    });
-
-    // Await all promises (both big and small deals)
-    await Promise.all([...bigDealPromises, ...smallDealPromises]);
-
-    connection.release();
-    return res.json({ success: true, message: 'Deals and images saved successfully!' });
-  } catch (error) {
-    console.error('Error saving deals and images:', error.message);
-    return res.status(500).json({ success: false, message: 'Failed to save deals and images' });
-  }
-});
-
-
-
-// Admin Deals Route - Fetch Deals with One Image per Deal
-app.get('/api/deals/today', async (req, res) => {
-  console.log('Incoming GET request to /api/deals/today');
-  
-  try {
-    const connection = await pool.getConnection();
-
-    // Fetch big deals with one image
-    const [bigDeals] = await connection.query(`
-      SELECT bd.*, di.image AS image
-      FROM big_deals bd
-      LEFT JOIN deal_images di ON bd.id = di.deal_id AND di.deal_type = 'big'
-      ORDER BY bd.created_at DESC
-    `);
-
-    console.log('Fetched big deals:', bigDeals);
-
-    // Fetch small deals with one image
-    const [smallDeals] = await connection.query(`
-      SELECT sd.*, di.image AS image
-      FROM small_deals sd
-      LEFT JOIN deal_images di ON sd.id = di.deal_id AND di.deal_type = 'small'
-      ORDER BY sd.created_at DESC
-    `);
-
-    console.log('Fetched small deals:', smallDeals);
-
-    // Convert BLOB data to base64 for both big and small deals
-    const bigDealsWithImages = bigDeals.map(deal => ({
-      ...deal,
-      image: deal.image
-        ? `data:image/jpeg;base64,${Buffer.from(deal.image, 'binary').toString('base64')}`
-        : null
-    }));
-
-    const smallDealsWithImages = smallDeals.map(deal => ({
-      ...deal,
-      image: deal.image
-        ? `data:image/jpeg;base64,${Buffer.from(deal.image, 'binary').toString('base64')}`
-        : null
-    }));
-
-    connection.release();
-    console.log('Successfully processed and returning deals with images');
-    return res.json({ bigDeals: bigDealsWithImages, smallDeals: smallDealsWithImages });
-  } catch (error) {
-    console.error('Error fetching today’s deals:', error.message);
-    return res.status(500).json({ success: false, message: 'Failed to fetch deals' });
-  }
-});
 
 
 
