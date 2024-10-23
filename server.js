@@ -23,7 +23,6 @@ const pool = mysql.createPool({
   queueLimit: 0
 });
 
-
 async function checkDbConnection() {
   try {
     const connection = await pool.getConnection();
@@ -35,10 +34,6 @@ async function checkDbConnection() {
 }
 
 checkDbConnection();
-
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
-
 
 const allowedOrigins = [
   'http://localhost:3000',
@@ -61,6 +56,19 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
+  fileFilter: (req, file, cb) => {
+    const allowedImageFormats = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (allowedImageFormats.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only jpeg, jpg, png, or webp are allowed.'), false);
+    }
+  }
+});
 
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword } = req.body;
@@ -319,14 +327,14 @@ app.post('/order/place', async (req, res) => {
 });
 
 
-
+//product route
 
 
 app.post('/api/products', upload.array('images', 10), async (req, res) => {
   const { title, description, price, category, isNew } = req.body;
   const images = req.files;
 
-  // Map category to a table name for the category-specific table
+  // Map categories to their respective table names
   const categoryTableMap = {
     'phones_laptops': 'phones_laptops',
     'wifi_routers': 'wifi_routers',
@@ -338,45 +346,111 @@ app.post('/api/products', upload.array('images', 10), async (req, res) => {
   };
 
   const categoryTableName = categoryTableMap[category];
+  const allowedImageFormats = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 
-  // Ensure the category exists and the table name is valid
   if (!categoryTableName) {
     return res.status(400).json({ success: false, message: 'Invalid category' });
   }
 
   try {
-    const connection = await pool.getConnection();
+    // Image validation
+    if (images && images.length > 0) {
+      for (let image of images) {
+        if (!allowedImageFormats.includes(image.mimetype)) {
+          return res.status(400).json({ success: false, message: 'Invalid image format. Please upload jpeg, jpg, png, or webp.' });
+        }
+      }
+    }
 
-    // Insert the product into the centralized 'products' table
+    const connection = await pool.getConnection();
+    await connection.beginTransaction(); // Start transaction
+
+    // Insert product into the general product table
     const insertProductQuery = `INSERT INTO products (title, description, price, is_new, category_id) VALUES (?, ?, ?, ?, ?)`;
     const categoryId = Object.values(categoryTableMap).indexOf(categoryTableName) + 1;
     const [productResult] = await connection.query(insertProductQuery, [title, description, price, isNew, categoryId]);
     const productId = productResult.insertId;
 
-    // Insert the product into the category-specific table (like 'phones_laptops')
+    // Insert product details into the specific category table
     const insertCategoryProductQuery = `INSERT INTO ${categoryTableName} (id, title, description, price, is_new, category_id) VALUES (?, ?, ?, ?, ?, ?)`;
     await connection.query(insertCategoryProductQuery, [productId, title, description, price, isNew, categoryId]);
 
-    // Insert images into both the 'product_images' table and the category-specific table
+    // Save images if available
     if (images && images.length > 0) {
       const insertImageQuery = `INSERT INTO product_images (product_id, image) VALUES (?, ?)`;
       const insertCategoryImageQuery = `UPDATE ${categoryTableName} SET image = ? WHERE id = ?`;
 
       for (let image of images) {
-        await connection.query(insertImageQuery, [productId, image.buffer]); // Insert image into 'product_images'
-        await connection.query(insertCategoryImageQuery, [image.buffer, productId]); // Insert image into category-specific table
+        console.log('Inserting image for product:', productId); // Debugging line
+        await connection.query(insertImageQuery, [productId, image.buffer]); // Save image as BLOB
+        await connection.query(insertCategoryImageQuery, [image.buffer, productId]); // Update image in category table
       }
     }
 
+    await connection.commit(); 
     connection.release();
     return res.json({ success: true, message: 'Product and images added successfully!' });
   } catch (error) {
     console.error('Database error:', error.message);
+    await connection.rollback();
+    connection.release();
     return res.status(500).json({ success: false, message: 'Failed to add product' });
   }
 });
 
 
+
+
+// Change this in your API endpoint:
+app.get('/api/products/item', async (req, res) => {  // Change from /api/products/search to /api/products
+  const { search } = req.query;  // Use search instead of keyword
+
+  if (!search) {
+    return res.status(400).json({ success: false, message: 'Search term is required' });
+  }
+
+  try {
+    const connection = await pool.getConnection();
+
+    // Query to search products based on the title or description
+    const searchQuery = `
+      SELECT p.*, 
+             CASE 
+               WHEN c.title IS NOT NULL THEN c.title 
+               ELSE '' 
+             END AS category_title 
+      FROM products p
+      LEFT JOIN (SELECT id, title FROM phones_laptops 
+                 UNION ALL 
+                 SELECT id, title FROM wifi_routers 
+                 UNION ALL 
+                 SELECT id, title FROM beds 
+                 UNION ALL 
+                 SELECT id, title FROM sofa_couches 
+                 UNION ALL 
+                 SELECT id, title FROM woofers_tv 
+                 UNION ALL 
+                 SELECT id, title FROM tables 
+                 UNION ALL 
+                 SELECT id, title FROM kitchen_utensils) AS c 
+      ON p.category_id = c.id
+      WHERE p.title LIKE ? OR p.description LIKE ?`;
+
+    const searchTerm = `%${search}%`;
+    const [results] = await connection.query(searchQuery, [searchTerm, searchTerm]);
+
+    connection.release();
+
+    if (results.length === 0) {
+      return res.status(404).json({ success: false, message: 'No products found' });
+    }
+
+    return res.json({ success: true, products: results });
+  } catch (error) {
+    console.error('Database error:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to search products' });
+  }
+});
 
 
 
@@ -406,7 +480,7 @@ app.get('/api/products', async (req, res) => {
       title: row.title,
       description: row.description,
       price: row.price,
-      category: row.category, // Include category in the response
+      category: row.category, 
       image: row.image ? `data:image/jpeg;base64,${row.image.toString('base64')}` : null
     }));
 
