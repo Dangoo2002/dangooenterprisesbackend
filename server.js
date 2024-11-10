@@ -169,19 +169,18 @@ app.post('/loginadmin', async (req, res) => {
 
 
 app.post('/cart/add', async (req, res) => {
-  const { user_id, item_id, quantity } = req.body;
+  const { user_id, item_id, quantity, total_price } = req.body;
 
-  console.log('Incoming request to add to cart:', { user_id, item_id, quantity });
+  console.log('Incoming request to add to cart:', { user_id, item_id, quantity, total_price });
 
-  if (!user_id || !item_id || !quantity) {
-    console.error('Missing required fields:', { user_id, item_id, quantity });
+  if (!user_id || !item_id || !quantity || total_price == null) {  // Ensure total_price is not null
+    console.error('Missing required fields:', { user_id, item_id, quantity, total_price });
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
   try {
     const connection = await pool.getConnection();
     
-    // Fetch product details and image from the product_images table
     const [productResults] = await connection.query(`
       SELECT p.title, p.description, p.price, pi.image 
       FROM products p 
@@ -199,15 +198,16 @@ app.post('/cart/add', async (req, res) => {
 
     const product = productResults[0];
 
-    // If the image is null, log the product info for debugging
     if (!product.image) {
       console.error('No image found for product:', product);
     }
 
     const sql = `
-      INSERT INTO cart (user_id, item_id, title, description, price, quantity, image)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE quantity = quantity + ?;
+      INSERT INTO cart (user_id, item_id, title, description, price, quantity, image, total_price)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE 
+        quantity = quantity + ?, 
+        total_price = ?;  
     `;
 
     console.log('Executing SQL:', sql);
@@ -218,11 +218,12 @@ app.post('/cart/add', async (req, res) => {
       product.description,
       product.price,
       quantity,
-      product.image || null,  // Image from product_images or null if not found
-      quantity
+      product.image || null, 
+      total_price, 
+      quantity,
+      total_price
     ]);
 
-    // Insert item into the cart, including the image
     await connection.query(sql, [
       user_id,
       item_id,
@@ -230,8 +231,10 @@ app.post('/cart/add', async (req, res) => {
       product.description,
       product.price,
       quantity,
-      product.image || null,  // Insert image or leave it null
-      quantity 
+      product.image || null, 
+      total_price, 
+      quantity, 
+      total_price
     ]);
 
     connection.release();
@@ -282,14 +285,17 @@ app.delete('/cart/:user_id/:item_id', async (req, res) => {
 
   try {
     const connection = await pool.getConnection();
-
-    const result = await connection.query(`
-      DELETE FROM cart WHERE user_id = ? AND item_id = ?`, 
-      [user_id, item_id]);
+    
+    // Execute delete query
+    const [result] = await connection.query(`
+      DELETE FROM cart WHERE user_id = ? AND item_id = ?
+    `, [user_id, item_id]);
 
     connection.release();
 
+    // Check if any row was affected (i.e., item was found and deleted)
     if (result.affectedRows === 0) {
+      console.error('Item not found in cart:', { user_id, item_id });
       return res.status(404).json({ success: false, message: 'Item not found in cart' });
     }
 
@@ -300,6 +306,7 @@ app.delete('/cart/:user_id/:item_id', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to remove item from cart' });
   }
 });
+
 
 
 app.post('/order/place', async (req, res) => {
@@ -327,14 +334,12 @@ app.post('/order/place', async (req, res) => {
 });
 
 
-//product route
+
 
 
 app.post('/api/products', upload.array('images', 10), async (req, res) => {
   const { title, description, price, category, isNew } = req.body;
   const images = req.files;
-
-  // Map categories to their respective table names
   const categoryTableMap = {
     'phones_laptops': 'phones_laptops',
     'wifi_routers': 'wifi_routers',
@@ -346,48 +351,38 @@ app.post('/api/products', upload.array('images', 10), async (req, res) => {
   };
 
   const categoryTableName = categoryTableMap[category];
-  const allowedImageFormats = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-
   if (!categoryTableName) {
     return res.status(400).json({ success: false, message: 'Invalid category' });
   }
 
   try {
-    // Image validation
-    if (images && images.length > 0) {
-      for (let image of images) {
-        if (!allowedImageFormats.includes(image.mimetype)) {
-          return res.status(400).json({ success: false, message: 'Invalid image format. Please upload jpeg, jpg, png, or webp.' });
-        }
-      }
-    }
-
     const connection = await pool.getConnection();
-    await connection.beginTransaction(); // Start transaction
+    await connection.beginTransaction();
 
-    // Insert product into the general product table
     const insertProductQuery = `INSERT INTO products (title, description, price, is_new, category_id) VALUES (?, ?, ?, ?, ?)`;
     const categoryId = Object.values(categoryTableMap).indexOf(categoryTableName) + 1;
     const [productResult] = await connection.query(insertProductQuery, [title, description, price, isNew, categoryId]);
     const productId = productResult.insertId;
 
-    // Insert product details into the specific category table
     const insertCategoryProductQuery = `INSERT INTO ${categoryTableName} (id, title, description, price, is_new, category_id) VALUES (?, ?, ?, ?, ?, ?)`;
     await connection.query(insertCategoryProductQuery, [productId, title, description, price, isNew, categoryId]);
 
-    // Save images if available
     if (images && images.length > 0) {
       const insertImageQuery = `INSERT INTO product_images (product_id, image) VALUES (?, ?)`;
       const insertCategoryImageQuery = `UPDATE ${categoryTableName} SET image = ? WHERE id = ?`;
 
       for (let image of images) {
-        console.log('Inserting image for product:', productId); // Debugging line
-        await connection.query(insertImageQuery, [productId, image.buffer]); // Save image as BLOB
-        await connection.query(insertCategoryImageQuery, [image.buffer, productId]); // Update image in category table
+        const processedImage = await sharp(image.buffer)
+          .resize(500, 500, { fit: 'contain', background: 'white' }) 
+          .toFormat('jpeg') 
+          .toBuffer();
+
+        await connection.query(insertImageQuery, [productId, processedImage]);
+        await connection.query(insertCategoryImageQuery, [processedImage, productId]);
       }
     }
 
-    await connection.commit(); 
+    await connection.commit();
     connection.release();
     return res.json({ success: true, message: 'Product and images added successfully!' });
   } catch (error) {
@@ -401,10 +396,8 @@ app.post('/api/products', upload.array('images', 10), async (req, res) => {
 
 
 
-// Change this in your API endpoint:
-app.get('/api/products/item', async (req, res) => {  // Change from /api/products/search to /api/products
-  const { search } = req.query;  // Use search instead of keyword
-
+app.get('/api/products/item', async (req, res) => {  
+  const { search } = req.query; 
   if (!search) {
     return res.status(400).json({ success: false, message: 'Search term is required' });
   }
@@ -412,7 +405,7 @@ app.get('/api/products/item', async (req, res) => {  // Change from /api/product
   try {
     const connection = await pool.getConnection();
 
-    // Query to search products based on the title or description
+  
     const searchQuery = `
       SELECT p.*, 
              CASE 
