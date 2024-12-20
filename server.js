@@ -6,6 +6,7 @@ const multer = require('multer');
 require('dotenv').config();
 const bcrypt = require('bcrypt');
 
+
 const app = express();
 app.use(express.json());
 app.use(bodyParser.json());
@@ -340,6 +341,7 @@ app.post('/order/place', async (req, res) => {
 app.post('/api/products', upload.array('images', 10), async (req, res) => {
   const { title, description, price, category, isNew } = req.body;
   const images = req.files;
+
   const categoryTableMap = {
     'phones_laptops': 'phones_laptops',
     'wifi_routers': 'wifi_routers',
@@ -372,13 +374,8 @@ app.post('/api/products', upload.array('images', 10), async (req, res) => {
       const insertCategoryImageQuery = `UPDATE ${categoryTableName} SET image = ? WHERE id = ?`;
 
       for (let image of images) {
-        const processedImage = await sharp(image.buffer)
-          .resize(500, 500, { fit: 'contain', background: 'white' }) 
-          .toFormat('jpeg') 
-          .toBuffer();
-
-        await connection.query(insertImageQuery, [productId, processedImage]);
-        await connection.query(insertCategoryImageQuery, [processedImage, productId]);
+        await connection.query(insertImageQuery, [productId, image.buffer]); // Store raw image buffer or file data
+        await connection.query(insertCategoryImageQuery, [image.buffer, productId]);
       }
     }
 
@@ -396,55 +393,87 @@ app.post('/api/products', upload.array('images', 10), async (req, res) => {
 
 
 
-app.get('/api/products/item', async (req, res) => {  
-  const { search } = req.query; 
-  if (!search) {
-    return res.status(400).json({ success: false, message: 'Search term is required' });
+
+// Product Search API Endpoint
+app.get('/api/products', async (req, res) => {
+  const { search } = req.query;
+
+  // Validate search parameter
+  if (!search || search.trim().length === 0) {
+      return res.status(400).json({
+          success: false,
+          message: 'Search term is required'
+      });
   }
 
   try {
-    const connection = await pool.getConnection();
+      const connection = await pool.getConnection();
 
-  
-    const searchQuery = `
-      SELECT p.*, 
-             CASE 
-               WHEN c.title IS NOT NULL THEN c.title 
-               ELSE '' 
-             END AS category_title 
-      FROM products p
-      LEFT JOIN (SELECT id, title FROM phones_laptops 
-                 UNION ALL 
-                 SELECT id, title FROM wifi_routers 
-                 UNION ALL 
-                 SELECT id, title FROM beds 
-                 UNION ALL 
-                 SELECT id, title FROM sofa_couches 
-                 UNION ALL 
-                 SELECT id, title FROM woofers_tv 
-                 UNION ALL 
-                 SELECT id, title FROM tables 
-                 UNION ALL 
-                 SELECT id, title FROM kitchen_utensils) AS c 
-      ON p.category_id = c.id
-      WHERE p.title LIKE ? OR p.description LIKE ?`;
+      // Improved search query with better categorization and error handling
+      const searchQuery = `
+          SELECT 
+              p.*,
+              COALESCE(c.title, '') as category_title,
+              COALESCE(c.category_type, '') as category_type
+          FROM products p
+          LEFT JOIN (
+              SELECT id, title, 'phones_laptops' as category_type FROM phones_laptops
+              UNION ALL
+              SELECT id, title, 'wifi_routers' as category_type FROM wifi_routers
+              UNION ALL
+              SELECT id, title, 'beds' as category_type FROM beds
+              UNION ALL
+              SELECT id, title, 'sofa_couches' as category_type FROM sofa_couches
+              UNION ALL
+              SELECT id, title, 'woofers_tv' as category_type FROM woofers_tv
+              UNION ALL
+              SELECT id, title, 'tables' as category_type FROM tables
+              UNION ALL
+              SELECT id, title, 'kitchen_utensils' as category_type FROM kitchen_utensils
+          ) AS c ON p.category_id = c.id
+          WHERE 
+              p.title LIKE ? OR 
+              p.description LIKE ? OR
+              c.title LIKE ?
+          LIMIT 10`; // Added limit for better performance
 
-    const searchTerm = `%${search}%`;
-    const [results] = await connection.query(searchQuery, [searchTerm, searchTerm]);
+      const searchTerm = `%${search.trim()}%`;
+      const [results] = await connection.query(searchQuery, [searchTerm, searchTerm, searchTerm]);
+      connection.release();
 
-    connection.release();
+      if (results.length === 0) {
+          return res.status(200).json({
+              success: true,
+              products: [],
+              message: 'No products found'
+          });
+      }
 
-    if (results.length === 0) {
-      return res.status(404).json({ success: false, message: 'No products found' });
-    }
+      // Format the response to match frontend expectations
+      const formattedResults = results.map(product => ({
+          id: product.id,
+          title: product.title,
+          price: product.price,
+          description: product.description,
+          category: {
+              title: product.category_title,
+              type: product.category_type
+          },
+      }));
 
-    return res.json({ success: true, products: results });
+      return res.json({
+          success: true,
+          products: formattedResults
+      });
+
   } catch (error) {
-    console.error('Database error:', error.message);
-    return res.status(500).json({ success: false, message: 'Failed to search products' });
+      console.error('Database error:', error);
+      return res.status(500).json({
+          success: false,
+          message: 'Internal server error while searching products'
+      });
   }
 });
-
 
 
 app.get('/api/products', async (req, res) => {
