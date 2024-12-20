@@ -291,19 +291,7 @@ app.delete('/cart/:user_id/:item_id', async (req, res) => {
     const userId = parseInt(user_id, 10);
     const itemId = parseInt(item_id, 10);
 
-    // Check if the item exists first
-    const [existingItem] = await connection.query(`
-      SELECT * FROM cart WHERE user_id = ? AND item_id = ?
-    `, [userId, itemId]);
-
-    if (existingItem.length === 0) {
-      console.error('Item not found in cart:', { user_id, item_id });
-      return res.status(404).json({ success: false, message: 'Item not found in cart' });
-    }
-
-    console.log('Item found in cart:', existingItem);
-
-    // Proceed with deleting the item
+    // Execute the delete query directly
     const [result] = await connection.query(`
       DELETE FROM cart WHERE user_id = ? AND item_id = ?
     `, [userId, itemId]);
@@ -312,10 +300,10 @@ app.delete('/cart/:user_id/:item_id', async (req, res) => {
 
     console.log('Query result:', result);
 
-    // If no rows were affected, something went wrong
+    // If no rows were affected, the item was not found or could not be deleted
     if (result.affectedRows === 0) {
-      console.error('Failed to delete item:', { user_id, item_id });
-      return res.status(404).json({ success: false, message: 'Item not found in cart' });
+      console.error('Item not found or could not be deleted:', { user_id, item_id });
+      return res.status(404).json({ success: false, message: 'Item not found or could not be deleted' });
     }
 
     console.log('Item deleted successfully:', { user_id, item_id });
@@ -325,6 +313,7 @@ app.delete('/cart/:user_id/:item_id', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to remove item from cart' });
   }
 });
+
 
 
 
