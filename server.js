@@ -491,7 +491,8 @@ app.get('/api/products/:id', async (req, res) => {
 
   try {
     const connection = await pool.getConnection();
-    const sql = `SELECT id, title, description, price, is_new, category_id, image FROM products WHERE id = ?`;
+    // Modified query to exclude the image column
+    const sql = `SELECT id, title, description, price, is_new, category_id FROM products WHERE id = ?`;
     const [results] = await connection.query(sql, [id]);
     connection.release();
 
@@ -500,6 +501,8 @@ app.get('/api/products/:id', async (req, res) => {
     }
 
     const product = results[0];
+
+    // Response with product data, without any image data
     const productWithImage = {
       id: product.id,
       title: product.title,
@@ -507,7 +510,6 @@ app.get('/api/products/:id', async (req, res) => {
       price: product.price,
       is_new: product.is_new,
       category_id: product.category_id,
-      image: product.image ? `data:image/jpeg;base64,${product.image.toString('base64')}` : null,
     };
 
     return res.json({ success: true, product: productWithImage });
