@@ -485,63 +485,38 @@ app.get('/api/products', async (req, res) => {
 });
 
 
-app.get('/api/products', async (req, res) => {
-  const { search } = req.query;
-
-  let sql = `
-    SELECT p.id, p.title, p.description, p.price, pi.image, p.category, c.name as category_name
-    FROM products p
-    LEFT JOIN product_images pi ON p.id = pi.product_id
-    LEFT JOIN categories c ON p.category = c.id
-  `;
-
-  const queryParams = [];
-
-  if (search) {
-    sql += ` WHERE p.title LIKE ? OR p.description LIKE ?`;
-    queryParams.push(`%${search}%`, `%${search}%`);
-  }
-
-  try {
-    const connection = await pool.getConnection();
-    const [results] = await connection.query(sql, queryParams);
-    
-    const products = results.map(row => ({
-      id: row.id,
-      title: row.title,
-      description: row.description,
-      price: row.price,
-      category: row.category, 
-      image: row.image ? `data:image/jpeg;base64,${row.image.toString('base64')}` : null
-    }));
-
-    connection.release();
-    return res.json(products);
-  } catch (error) {
-    console.error('Error fetching products:', error.message);
-    return res.status(500).json({ success: false, message: 'Failed to fetch products' });
-  }
-});
-
 
 app.get('/api/products/:id', async (req, res) => {
   const { id } = req.params;
+
   try {
     const connection = await pool.getConnection();
-    const sql = `SELECT * FROM products WHERE id = ?`;
-    const [product] = await connection.query(sql, [id]);
+    const sql = `SELECT id, title, description, price, is_new, category_id, image FROM products WHERE id = ?`;
+    const [results] = await connection.query(sql, [id]);
     connection.release();
 
-    if (product.length === 0) {
-      return res.status(404).json({ message: 'Product not found' });
+    if (results.length === 0) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
-    res.json(product[0]); // Return the product details
+    const product = results[0];
+    const productWithImage = {
+      id: product.id,
+      title: product.title,
+      description: product.description,
+      price: product.price,
+      is_new: product.is_new,
+      category_id: product.category_id,
+      image: product.image ? `data:image/jpeg;base64,${product.image.toString('base64')}` : null,
+    };
+
+    return res.json({ success: true, product: productWithImage });
   } catch (error) {
-    console.error('Error fetching product:', error.message);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error(`Error fetching product with ID ${id}:`, error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch product' });
   }
 });
+
 
 
 
