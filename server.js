@@ -491,33 +491,39 @@ app.get('/api/products/:id', async (req, res) => {
 
   try {
     const connection = await pool.getConnection();
-    // Modified query to exclude the image column
-    const sql = `SELECT id, title, description, price, is_new, category_id FROM products WHERE id = ?`;
-    const [results] = await connection.query(sql, [id]);
-    connection.release();
 
-    if (results.length === 0) {
+    // Query to fetch product details
+    const productQuery = `SELECT id, title, description, price, is_new, category_id FROM products WHERE id = ?`;
+    const [productResults] = await connection.query(productQuery, [id]);
+
+    if (productResults.length === 0) {
+      connection.release();
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
-    const product = results[0];
+    const product = productResults[0];
 
-    // Response with product data, without any image data
-    const productWithImage = {
-      id: product.id,
-      title: product.title,
-      description: product.description,
-      price: product.price,
-      is_new: product.is_new,
-      category_id: product.category_id,
+    // Query to fetch product images
+    const imageQuery = `SELECT image FROM product_images WHERE product_id = ?`;
+    const [imageResults] = await connection.query(imageQuery, [id]);
+    connection.release();
+
+    // Convert images to base64 format
+    const images = imageResults.map((img) => `data:image/jpeg;base64,${img.image.toString('base64')}`);
+
+    // Combine product details with images
+    const productWithImages = {
+      ...product,
+      images,
     };
 
-    return res.json({ success: true, product: productWithImage });
+    return res.json({ success: true, product: productWithImages });
   } catch (error) {
     console.error(`Error fetching product with ID ${id}:`, error.message);
     return res.status(500).json({ success: false, message: 'Failed to fetch product' });
   }
 });
+
 
 
 
