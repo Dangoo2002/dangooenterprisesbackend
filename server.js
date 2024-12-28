@@ -326,14 +326,6 @@ app.post('/api/orders', async (req, res) => {
   }
 
   try {
-    if (user_id) {
-      const user = await getUserById(user_id);
-      if (!user) {
-        console.log('User not authenticated');
-        return res.status(401).json({ success: false, message: 'User not authenticated' });
-      }
-    }
-
     const connection = await pool.getConnection();
     const sql = `
       INSERT INTO orders (user_id, product_id, quantity, total_price, phone, location, order_date, email, name)
@@ -349,6 +341,7 @@ app.post('/api/orders', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to place order' });
   }
 });
+
 
 
 
