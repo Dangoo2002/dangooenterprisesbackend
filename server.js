@@ -331,7 +331,7 @@ app.post('/api/orders', async (req, res) => {
     if (user_id) {
       const connection = await pool.getConnection();
       
-      // Query the signup table to check if the user_id exists
+      // Query the signup table to check if the user_id exists (use id from the signup table)
       const [userRows] = await connection.query('SELECT * FROM signup WHERE id = ?', [user_id]);
       
       if (userRows.length === 0) {
@@ -350,7 +350,7 @@ app.post('/api/orders', async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?)
     `;
     
-    // Insert order with user_id or null if not authenticated
+    // Insert order with user_id (which is still from the signup table) or null if not authenticated
     const [result] = await connection.query(sql, [user_id || null, product_id, quantity, total_price, phone, location, email, name]);
     connection.release();
 
@@ -361,8 +361,6 @@ app.post('/api/orders', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to place order' });
   }
 });
-
-
 
 
 
