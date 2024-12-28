@@ -316,33 +316,39 @@ app.delete('/cart/:user_id/:item_id', async (req, res) => {
 
 
 
+app.post('/api/orders', async (req, res) => {
+  const { product_id, quantity, total_price, phone, location, email, user_id, name } = req.body;
+  console.log('Received order data:', req.body);
 
-
-
-app.post('/order/place', async (req, res) => {
-  const { user_id, items, total_price } = req.body;
+  if (!product_id || !quantity || !total_price || !phone || !location || !name) {
+    console.log('Missing or invalid fields');
+    return res.status(400).json({ success: false, message: 'Missing or invalid fields' });
+  }
 
   try {
+    if (user_id) {
+      const user = await getUserById(user_id);
+      if (!user) {
+        console.log('User not authenticated');
+        return res.status(401).json({ success: false, message: 'User not authenticated' });
+      }
+    }
+
     const connection = await pool.getConnection();
-    const insertOrder = 'INSERT INTO orders (user_id, total_price, payment_status) VALUES (?, ?, "pending")';
-    const [orderResult] = await connection.query(insertOrder, [user_id, total_price]);
-
-    const orderId = orderResult.insertId;
-    const orderItems = items.map(item => [orderId, item.item_id, item.quantity, item.price_at_purchase]);
-
-    const insertOrderItems = 'INSERT INTO order_items (order_id, item_id, quantity, price_at_purchase) VALUES ?';
-    await connection.query(insertOrderItems, [orderItems]);
-
-    await connection.query('DELETE FROM cart WHERE user_id = ?', [user_id]);
-
+    const sql = `
+      INSERT INTO orders (user_id, product_id, quantity, total_price, phone, location, order_date, email, name)
+      VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?)
+    `;
+    const [result] = await connection.query(sql, [user_id || null, product_id, quantity, total_price, phone, location, email, name]);
     connection.release();
-    return res.json({ success: true, message: 'Order placed successfully' });
+
+    console.log('Order placed successfully, Order ID:', result.insertId);
+    return res.json({ success: true, message: 'Order placed successfully', order_id: result.insertId });
   } catch (error) {
-    console.error('Order error:', error.message);
+    console.error('Error saving order:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to place order' });
   }
 });
-
 
 
 
