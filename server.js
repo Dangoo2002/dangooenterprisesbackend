@@ -298,9 +298,11 @@ app.delete('/cart/:user_id/:item_id', async (req, res) => {
     const userId = parseInt(user_id, 10);
     const itemId = parseInt(item_id, 10);
 
-    // Fetch the product_id from the cart
+    // Fetch the product_id from the cart by joining the products table
     const [cartItem] = await connection.query(`
-      SELECT item_id AS product_id FROM cart WHERE user_id = ? AND id = ?
+      SELECT c.item_id AS product_id FROM cart c
+      LEFT JOIN products p ON c.item_id = p.id
+      WHERE c.user_id = ? AND c.id = ?
     `, [userId, itemId]);
 
     // Check if the item exists in the cart
@@ -331,6 +333,7 @@ app.delete('/cart/:user_id/:item_id', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to remove item from cart' });
   }
 });
+
 
 
 
