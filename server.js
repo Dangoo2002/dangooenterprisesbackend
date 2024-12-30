@@ -283,6 +283,7 @@ app.get('/cart/:userId', async (req, res) => {
 
 
 
+// DELETE /cart/:user_id/:item_id
 app.delete('/cart/:user_id/:item_id', async (req, res) => {
   const { user_id, item_id } = req.params;
 
@@ -297,21 +298,22 @@ app.delete('/cart/:user_id/:item_id', async (req, res) => {
     const userId = parseInt(user_id, 10);
     const itemId = parseInt(item_id, 10);
 
-    // Check if the item exists
-    const [checkResult] = await connection.query(`
-      SELECT * FROM cart WHERE user_id = ? AND item_id = ?
+    // Fetch the product_id from the cart
+    const [cartItem] = await connection.query(`
+      SELECT item_id AS product_id FROM cart WHERE user_id = ? AND id = ?
     `, [userId, itemId]);
 
-    console.log('Check result:', checkResult);
-
-    if (checkResult.length === 0) {
+    // Check if the item exists in the cart
+    if (cartItem.length === 0) {
       connection.release();
       return res.status(404).json({ success: false, message: 'Item not found in cart' });
     }
 
-    // Execute the DELETE query
+    const productId = cartItem[0].product_id;
+
+    // Execute the DELETE query to remove the item from the cart
     const [deleteResult] = await connection.query(`
-      DELETE FROM cart WHERE user_id = ? AND item_id = ?
+      DELETE FROM cart WHERE user_id = ? AND id = ?
     `, [userId, itemId]);
 
     connection.release();
@@ -321,7 +323,9 @@ app.delete('/cart/:user_id/:item_id', async (req, res) => {
     }
 
     console.log('Item deleted successfully:', { userId, itemId });
-    return res.json({ success: true, message: 'Item removed from cart' });
+
+    // Return the product_id for redirection after deletion
+    return res.json({ success: true, message: 'Item removed from cart', productId });
   } catch (error) {
     console.error('Database error:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to remove item from cart' });
