@@ -255,12 +255,19 @@ app.get('/cart/:userId', async (req, res) => {
 
   try {
     const connection = await pool.getConnection();
-    
-   
+
     const sql = `
-      SELECT c.id, c.title, c.description, c.price, c.quantity, pi.image
+      SELECT 
+        c.id AS cart_id, 
+        c.item_id AS product_id, 
+        p.title, 
+        p.description, 
+        p.price, 
+        c.quantity, 
+        pi.image
       FROM cart c
-      LEFT JOIN product_images pi ON c.item_id = pi.product_id
+      LEFT JOIN products p ON c.item_id = p.id
+      LEFT JOIN product_images pi ON p.id = pi.product_id
       WHERE c.user_id = ?
     `;
 
@@ -273,6 +280,7 @@ app.get('/cart/:userId', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to fetch cart items' });
   }
 });
+
 
 
 app.delete('/cart/:user_id/:item_id', async (req, res) => {
