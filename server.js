@@ -286,7 +286,7 @@ app.get('/cart/:userId', async (req, res) => {
 app.delete('/cart/:user_id/:item_id', async (req, res) => {
   const { user_id, item_id } = req.params;
 
-  console.log('Deleting item from cart:', { user_id, item_id });
+  console.log('Received DELETE request with:', { user_id, item_id });
 
   if (!user_id || !item_id) {
     return res.status(400).json({ success: false, message: 'Missing required fields' });
@@ -294,22 +294,22 @@ app.delete('/cart/:user_id/:item_id', async (req, res) => {
 
   try {
     const connection = await pool.getConnection();
-
     const userId = parseInt(user_id, 10);
     const itemId = parseInt(item_id, 10);
 
-    // Check if item exists
+    // Check if the item exists
     const [checkResult] = await connection.query(`
       SELECT * FROM cart WHERE user_id = ? AND item_id = ?
     `, [userId, itemId]);
 
+    console.log('Check result:', checkResult);
+
     if (checkResult.length === 0) {
       connection.release();
-      console.error('Item not found in cart for deletion:', { userId, itemId });
       return res.status(404).json({ success: false, message: 'Item not found in cart' });
     }
 
-    // Execute DELETE query
+    // Execute the DELETE query
     const [deleteResult] = await connection.query(`
       DELETE FROM cart WHERE user_id = ? AND item_id = ?
     `, [userId, itemId]);
@@ -317,17 +317,17 @@ app.delete('/cart/:user_id/:item_id', async (req, res) => {
     connection.release();
 
     if (deleteResult.affectedRows === 0) {
-      console.error('No rows deleted. Item might not exist or already deleted:', { userId, itemId });
-      return res.status(404).json({ success: false, message: 'Item not found or could not be deleted' });
+      return res.status(404).json({ success: false, message: 'Item could not be deleted' });
     }
 
     console.log('Item deleted successfully:', { userId, itemId });
     return res.json({ success: true, message: 'Item removed from cart' });
   } catch (error) {
-    console.error('Database error occurred:', error.message);
+    console.error('Database error:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to remove item from cart' });
   }
 });
+
 
 
 
