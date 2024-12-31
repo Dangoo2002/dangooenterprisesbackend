@@ -369,7 +369,7 @@ app.post('/api/orders', async (req, res) => {
     const connection = await pool.getConnection();
     const sql = `
       INSERT INTO orders (user_id, product_id, quantity, total_price, phone, location, order_date, email, name, title)
-      VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)
     `;
     
     // Insert order with user_id (which is still from the signup table) or null if not authenticated
