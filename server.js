@@ -475,18 +475,19 @@ app.post('/api/orders/cancellation/:orderId', async (req, res) => {
 
 
 app.get('/api/orders/ac', async (req, res) => {
-  try {
-    const userEmail = req.user.email; // Assuming user is authenticated and email is available in the request object
-    const connection = await pool.getConnection();
-    
-    // Query to fetch orders for the logged-in user
+
+    try {
+      const connection = await pool.getConnection();
+      
+   
+    // Query to fetch orders for the logged-in user by user ID
     const query = `
       SELECT o.id, o.product_id, o.quantity, o.total_price, o.phone, o.location, o.order_date, o.email, o.name, o.title
       FROM orders o
-      WHERE o.email = ?
+      WHERE o.user_id = ?
     `;
     
-    const [orders] = await connection.query(query, [userEmail]);
+    const [orders] = await connection.query(query, [userId]);
     connection.release();
     
     if (orders.length === 0) {
@@ -499,6 +500,7 @@ app.get('/api/orders/ac', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to fetch orders' });
   }
 });
+
 
 
 
