@@ -103,6 +103,27 @@ app.post('/signup', async (req, res) => {
   }
 });
 
+// Endpoint to get the total number of users
+app.get('/api/signup/total', async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+    
+    // Query to get the total count of users
+    const query = 'SELECT COUNT(*) AS totalUsers FROM signup';
+    
+    const [rows] = await connection.query(query);
+    connection.release();
+    
+    // Return the count of users as a response
+    const totalUsers = rows[0].totalUsers;
+    return res.json({ success: true, totalUsers });
+  } catch (error) {
+    console.error('Error fetching total users:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch total users' });
+  }
+});
+
+
 app.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
@@ -409,6 +430,47 @@ app.get('/api/orders', async (req, res) => {
   }
 });
 
+// Mark an order as delivered
+app.post('/api/orders/delivery/:orderId', async (req, res) => {
+  const { orderId } = req.params;
+
+  try {
+    const connection = await pool.getConnection();
+    const updateQuery = 'UPDATE orders SET delivered = TRUE, cancelled = FALSE WHERE id = ?';
+    const [result] = await connection.query(updateQuery, [orderId]);
+    connection.release();
+
+    if (result.affectedRows > 0) {
+      res.json({ success: true, message: 'Order marked as delivered' });
+    } else {
+      res.status(404).json({ success: false, message: 'Order not found' });
+    }
+  } catch (error) {
+    console.error('Error updating order delivery:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to mark order as delivered' });
+  }
+});
+
+// Mark an order as cancelled
+app.post('/api/orders/cancellation/:orderId', async (req, res) => {
+  const { orderId } = req.params;
+
+  try {
+    const connection = await pool.getConnection();
+    const updateQuery = 'UPDATE orders SET cancelled = TRUE, delivered = FALSE WHERE id = ?';
+    const [result] = await connection.query(updateQuery, [orderId]);
+    connection.release();
+
+    if (result.affectedRows > 0) {
+      res.json({ success: true, message: 'Order marked as cancelled' });
+    } else {
+      res.status(404).json({ success: false, message: 'Order not found' });
+    }
+  } catch (error) {
+    console.error('Error updating order cancellation:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to mark order as cancelled' });
+  }
+});
 
 
 app.post('/api/products', upload.array('images', 10), async (req, res) => {
