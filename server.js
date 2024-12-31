@@ -474,13 +474,18 @@ app.post('/api/orders/cancellation/:orderId', async (req, res) => {
 
 
 
-app.get('/api/orders/ac', async (req, res) => {
+app.get('/api/orders/user', async (req, res) => {
+  try {
+    // Ensure that userId is provided in the request query or body (based on how you want to pass it)
+    const userId = req.query.userId;  // You can use req.query or req.params depending on how you want to send the userId
 
-    try {
-      const connection = await pool.getConnection();
-      
-   
-    // Query to fetch orders for the logged-in user by user ID
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'User ID is required' });
+    }
+
+    const connection = await pool.getConnection();
+    
+    // Query to fetch orders for a particular user by user_id
     const query = `
       SELECT o.id, o.product_id, o.quantity, o.total_price, o.phone, o.location, o.order_date, o.email, o.name, o.title
       FROM orders o
@@ -491,13 +496,13 @@ app.get('/api/orders/ac', async (req, res) => {
     connection.release();
     
     if (orders.length === 0) {
-      return res.json({ success: true, message: 'No orders found', orders: [] });
+      return res.json({ success: true, message: 'No orders found for this user', orders: [] });
     }
     
     return res.json({ success: true, orders });
   } catch (error) {
-    console.error('Error fetching orders:', error.message);
-    return res.status(500).json({ success: false, message: 'Failed to fetch orders' });
+    console.error('Error fetching orders by user ID:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch orders by user ID' });
   }
 });
 
