@@ -473,6 +473,38 @@ app.post('/api/orders/cancellation/:orderId', async (req, res) => {
 });
 
 
+
+app.get('/api/orders/ac', async (req, res) => {
+  try {
+    const userEmail = req.user.email; // Assuming user is authenticated and email is available in the request object
+    const connection = await pool.getConnection();
+    
+    // Query to fetch orders for the logged-in user
+    const query = `
+      SELECT o.id, o.product_id, o.quantity, o.total_price, o.phone, o.location, o.order_date, o.email, o.name, o.title
+      FROM orders o
+      WHERE o.email = ?
+    `;
+    
+    const [orders] = await connection.query(query, [userEmail]);
+    connection.release();
+    
+    if (orders.length === 0) {
+      return res.json({ success: true, message: 'No orders found', orders: [] });
+    }
+    
+    return res.json({ success: true, orders });
+  } catch (error) {
+    console.error('Error fetching orders:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch orders' });
+  }
+});
+
+
+
+
+
+
 app.post('/api/products', upload.array('images', 10), async (req, res) => {
   const { title, description, price, category, isNew } = req.body;
   const images = req.files;
