@@ -474,28 +474,40 @@ app.post('/api/orders/cancellation/:orderId', async (req, res) => {
 
 
 
+
 app.get('/api/orders/user', async (req, res) => {
   try {
-    // Assuming you are using session or JWT to get the logged-in user's email
-    const email = req.user?.email; // If using JWT, the email should be in the decoded token
+    // Retrieve the email from query parameters
+    const email = req.query.email;
 
+    // Validate that email is provided
     if (!email) {
-      return res.status(400).json({ success: false, message: 'User must be logged in' });
+      return res.status(400).json({ success: false, message: 'Email is required' });
     }
 
-    // Query to fetch orders for the logged-in user based on their email
+    // Query to fetch user details from the signup table
     const connection = await pool.getConnection();
+    const [userRows] = await connection.query('SELECT id FROM signup WHERE email = ?', [email]);
+
+    if (userRows.length === 0) {
+      connection.release();
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const userId = userRows[0].id;
+
+    // Query to fetch orders associated with the user's email
     const query = `
       SELECT o.id, o.product_id, o.quantity, o.total_price, o.phone, o.location, o.order_date, o.email, o.name, o.title
       FROM orders o
       WHERE o.email = ?
     `;
-    
+
     const [orders] = await connection.query(query, [email]);
     connection.release();
 
     if (orders.length === 0) {
-      return res.json({ success: true, message: 'No orders found for this email', orders: [] });
+      return res.json({ success: true, message: 'No orders found for this user', orders: [] });
     }
 
     return res.json({ success: true, orders });
