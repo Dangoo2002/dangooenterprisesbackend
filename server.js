@@ -410,9 +410,9 @@ app.get('/api/orders', async (req, res) => {
   try {
     const connection = await pool.getConnection();
     
-    // Query to fetch all orders
+    // Query to fetch all orders including delivered and cancelled fields
     const query = `
-      SELECT o.id, o.product_id, o.quantity, o.total_price, o.phone, o.location, o.order_date, o.email, o.name, o.title
+      SELECT o.id, o.product_id, o.quantity, o.total_price, o.phone, o.location, o.order_date, o.email, o.name, o.title, o.delivered, o.cancelled
       FROM orders o
     `;
     
