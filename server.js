@@ -467,25 +467,11 @@ app.delete('/api/products/:id', async (req, res) => {
 
   try {
     const connection = await pool.getConnection();
-    const checkOrdersQuery = `SELECT * FROM orders WHERE product_id = ?`;
     const deleteProductQuery = `DELETE FROM products WHERE id = ?`;
     const deleteImagesQuery = `DELETE FROM product_images WHERE product_id = ?`;
 
-    // Check if there are any orders for this product
-    const [orders] = await connection.query(checkOrdersQuery, [id]);
-
-    if (orders.length > 0) {
-      // If orders exist, either delete or update them
-      // Option 1: Delete all orders referencing this product
-      // await connection.query(`DELETE FROM orders WHERE product_id = ?`, [id]);
-
-      // Option 2: Update orders to set product_id to NULL (if your schema allows this)
-      await connection.query(`UPDATE orders SET product_id = NULL WHERE product_id = ?`, [id]);
-    }
-
-    // Delete associated images
+    // Delete associated images first
     await connection.query(deleteImagesQuery, [id]);
-
     // Delete the product
     const [result] = await connection.query(deleteProductQuery, [id]);
 
