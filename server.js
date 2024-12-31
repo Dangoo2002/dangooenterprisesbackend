@@ -461,6 +461,36 @@ app.get('/api/products/data', async (req, res) => {
 
 
 
+// DELETE endpoint to remove a product by ID
+app.delete('/api/products/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const connection = await pool.getConnection();
+    const deleteProductQuery = `DELETE FROM products WHERE id = ?`;
+    const deleteImagesQuery = `DELETE FROM product_images WHERE product_id = ?`;
+
+    // Delete associated images first
+    await connection.query(deleteImagesQuery, [id]);
+    // Delete the product
+    const [result] = await connection.query(deleteProductQuery, [id]);
+
+    connection.release();
+
+    if (result.affectedRows > 0) {
+      res.json({ success: true, message: 'Product deleted successfully' });
+    } else {
+      res.status(404).json({ success: false, message: 'Product not found' });
+    }
+  } catch (error) {
+    console.error('Error deleting product:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete product' });
+  }
+});
+
+
+
+
 // Product Search API Endpoint
 app.get('/api/products', async (req, res) => {
   const { search } = req.query;
