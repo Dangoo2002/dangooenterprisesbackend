@@ -440,6 +440,24 @@ app.post('/api/products', upload.array('images', 10), async (req, res) => {
 });
 
 
+app.get('/api/products/data', async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+    const getProductsQuery = `
+      SELECT p.id, p.title, p.description, p.price, p.is_new, p.category_id, pi.image 
+      FROM products p
+      LEFT JOIN product_images pi ON p.id = pi.product_id
+    `;
+
+    const [products] = await connection.query(getProductsQuery);
+    connection.release();
+
+    return res.json({ success: true, data: products });
+  } catch (error) {
+    console.error('Database error:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch products' });
+  }
+});
 
 
 
