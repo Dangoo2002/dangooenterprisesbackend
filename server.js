@@ -474,13 +474,14 @@ app.post('/api/orders/cancellation/:orderId', async (req, res) => {
 
 
 
+// Assuming you are using session or JWT token to fetch the logged-in user's email
 app.get('/api/orders/user', async (req, res) => {
   try {
-    // Ensure that email is provided in the request query or body
-    const email = req.query.email;  // Assuming the email is passed as a query parameter
+    // Check if email is available in the session or JWT token
+    const email = req.user?.email; // Assuming req.user is set by authentication middleware (e.g., Passport, JWT)
 
     if (!email) {
-      return res.status(400).json({ success: false, message: 'Email is required' });
+      return res.status(400).json({ success: false, message: 'Email is required and user must be authenticated' });
     }
 
     const connection = await pool.getConnection();
@@ -505,7 +506,6 @@ app.get('/api/orders/user', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to fetch orders by email' });
   }
 });
-
 
 
 
