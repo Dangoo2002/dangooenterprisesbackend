@@ -474,19 +474,17 @@ app.post('/api/orders/cancellation/:orderId', async (req, res) => {
 
 
 
-// Assuming you are using session or JWT token to fetch the logged-in user's email
 app.get('/api/orders/user', async (req, res) => {
   try {
-    // Check if email is available in the session or JWT token
-    const email = req.user?.email; // Assuming req.user is set by authentication middleware (e.g., Passport, JWT)
+    // Assuming you are using session or JWT to get the logged-in user's email
+    const email = req.user?.email; // If using JWT, the email should be in the decoded token
 
     if (!email) {
-      return res.status(400).json({ success: false, message: 'Email is required and user must be authenticated' });
+      return res.status(400).json({ success: false, message: 'User must be logged in' });
     }
 
+    // Query to fetch orders for the logged-in user based on their email
     const connection = await pool.getConnection();
-    
-    // Query to fetch orders for a particular user by email
     const query = `
       SELECT o.id, o.product_id, o.quantity, o.total_price, o.phone, o.location, o.order_date, o.email, o.name, o.title
       FROM orders o
@@ -495,17 +493,18 @@ app.get('/api/orders/user', async (req, res) => {
     
     const [orders] = await connection.query(query, [email]);
     connection.release();
-    
+
     if (orders.length === 0) {
       return res.json({ success: true, message: 'No orders found for this email', orders: [] });
     }
-    
+
     return res.json({ success: true, orders });
   } catch (error) {
-    console.error('Error fetching orders by email:', error.message);
-    return res.status(500).json({ success: false, message: 'Failed to fetch orders by email' });
+    console.error('Error fetching orders:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch orders' });
   }
 });
+
 
 
 
