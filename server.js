@@ -476,33 +476,33 @@ app.post('/api/orders/cancellation/:orderId', async (req, res) => {
 
 app.get('/api/orders/user', async (req, res) => {
   try {
-    // Ensure that userId is provided in the request query or body (based on how you want to pass it)
-    const userId = req.query.userId;  // You can use req.query or req.params depending on how you want to send the userId
+    // Ensure that email is provided in the request query or body
+    const email = req.query.email;  // Assuming the email is passed as a query parameter
 
-    if (!userId) {
-      return res.status(400).json({ success: false, message: 'User ID is required' });
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
     }
 
     const connection = await pool.getConnection();
     
-    // Query to fetch orders for a particular user by user_id
+    // Query to fetch orders for a particular user by email
     const query = `
       SELECT o.id, o.product_id, o.quantity, o.total_price, o.phone, o.location, o.order_date, o.email, o.name, o.title
       FROM orders o
-      WHERE o.user_id = ?
+      WHERE o.email = ?
     `;
     
-    const [orders] = await connection.query(query, [userId]);
+    const [orders] = await connection.query(query, [email]);
     connection.release();
     
     if (orders.length === 0) {
-      return res.json({ success: true, message: 'No orders found for this user', orders: [] });
+      return res.json({ success: true, message: 'No orders found for this email', orders: [] });
     }
     
     return res.json({ success: true, orders });
   } catch (error) {
-    console.error('Error fetching orders by user ID:', error.message);
-    return res.status(500).json({ success: false, message: 'Failed to fetch orders by user ID' });
+    console.error('Error fetching orders by email:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch orders by email' });
   }
 });
 
