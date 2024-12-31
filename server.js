@@ -431,45 +431,51 @@ app.get('/api/orders', async (req, res) => {
   }
 });
 
-// Mark an order as delivered
 app.post('/api/orders/delivery/:orderId', async (req, res) => {
   const { orderId } = req.params;
-
   try {
     const connection = await pool.getConnection();
-    const updateQuery = 'UPDATE orders SET delivered = TRUE, cancelled = FALSE WHERE id = ?';
-    const [result] = await connection.query(updateQuery, [orderId]);
+    
+    const query = `
+      UPDATE orders
+      SET delivered = 1, cancelled = 0
+      WHERE id = ?
+    `;
+    const [result] = await connection.query(query, [orderId]);
     connection.release();
-
-    if (result.affectedRows > 0) {
-      res.json({ success: true, message: 'Order marked as delivered' });
-    } else {
-      res.status(404).json({ success: false, message: 'Order not found' });
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
     }
+    
+    return res.json({ success: true, message: 'Order marked as delivered' });
   } catch (error) {
-    console.error('Error updating order delivery:', error.message);
-    res.status(500).json({ success: false, message: 'Failed to mark order as delivered' });
+    console.error('Error updating order delivery status:', error);
+    return res.status(500).json({ success: false, message: 'Failed to mark as delivered' });
   }
 });
 
-// Mark an order as cancelled
 app.post('/api/orders/cancellation/:orderId', async (req, res) => {
   const { orderId } = req.params;
-
   try {
     const connection = await pool.getConnection();
-    const updateQuery = 'UPDATE orders SET cancelled = TRUE, delivered = FALSE WHERE id = ?';
-    const [result] = await connection.query(updateQuery, [orderId]);
+    
+    const query = `
+      UPDATE orders
+      SET delivered = 0, cancelled = 1
+      WHERE id = ?
+    `;
+    const [result] = await connection.query(query, [orderId]);
     connection.release();
-
-    if (result.affectedRows > 0) {
-      res.json({ success: true, message: 'Order marked as cancelled' });
-    } else {
-      res.status(404).json({ success: false, message: 'Order not found' });
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
     }
+    
+    return res.json({ success: true, message: 'Order marked as cancelled' });
   } catch (error) {
-    console.error('Error updating order cancellation:', error.message);
-    res.status(500).json({ success: false, message: 'Failed to mark order as cancelled' });
+    console.error('Error updating order cancellation status:', error);
+    return res.status(500).json({ success: false, message: 'Failed to mark as cancelled' });
   }
 });
 
