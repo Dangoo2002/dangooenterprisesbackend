@@ -443,63 +443,21 @@ app.post('/api/products', upload.array('images', 10), async (req, res) => {
 app.get('/api/products/data', async (req, res) => {
   try {
     const connection = await pool.getConnection();
-
-    // Query to get all products with their category and image details
     const getProductsQuery = `
-      SELECT p.id, p.title, p.description, p.price, p.is_new, p.category_id, pi.image, c.table_name AS category_table
+      SELECT p.id, p.title, p.description, p.price, p.is_new, p.category_id, pi.image 
       FROM products p
       LEFT JOIN product_images pi ON p.id = pi.product_id
-      LEFT JOIN categories c ON p.category_id = c.id
     `;
 
     const [products] = await connection.query(getProductsQuery);
-
-    // Fetch product data from category-specific tables
-    const categoryTableMap = {
-      1: 'phones_laptops',
-      2: 'wifi_routers',
-      3: 'beds',
-      4: 'sofa_couches',
-      5: 'woofers_tv',
-      6: 'tables',
-      7: 'kitchen_utensils'
-    };
-
-    const productDetails = [];
-
-    // Loop through the products and fetch additional details from category tables
-    for (let product of products) {
-      const categoryTableName = categoryTableMap[product.category_id];
-
-      if (categoryTableName) {
-        // Query to fetch the product details from the category-specific table
-        const getCategoryProductQuery = `
-          SELECT id, title, description, price, is_new
-          FROM ${categoryTableName}
-          WHERE id = ?
-        `;
-        
-        const [categoryProduct] = await connection.query(getCategoryProductQuery, [product.id]);
-
-        if (categoryProduct.length > 0) {
-          const productData = {
-            ...product,
-            ...categoryProduct[0]
-          };
-          productDetails.push(productData);
-        }
-      }
-    }
-
     connection.release();
 
-    return res.json({ success: true, data: productDetails });
+    return res.json({ success: true, data: products });
   } catch (error) {
     console.error('Database error:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to fetch products' });
   }
 });
-
 
 
 
