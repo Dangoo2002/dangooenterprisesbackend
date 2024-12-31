@@ -461,30 +461,66 @@ app.get('/api/products/data', async (req, res) => {
 
 
 
-// DELETE endpoint to remove a product by ID
 app.delete('/api/products/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
     const connection = await pool.getConnection();
-    const deleteProductQuery = `DELETE FROM products WHERE id = ?`;
-    const deleteImagesQuery = `DELETE FROM product_images WHERE product_id = ?`;
 
-    // Delete associated images first
+    // First, fetch the product details to get its category_id
+    const getProductQuery = `SELECT category_id FROM products WHERE id = ?`;
+    const [product] = await connection.query(getProductQuery, [id]);
+
+    if (!product || product.length === 0) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    const categoryId = product[0].category_id;
+
+    // Map category_id to category table name
+    const categoryTableMap = {
+      1: 'phones_laptops',
+      2: 'wifi_routers',
+      3: 'beds',
+      4: 'sofa_couches',
+      5: 'woofers_tv',
+      6: 'tables',
+      7: 'kitchen_utensils'
+    };
+
+    const categoryTableName = categoryTableMap[categoryId];
+    if (!categoryTableName) {
+      return res.status(400).json({ success: false, message: 'Invalid category' });
+    }
+
+    // Start transaction
+    await connection.beginTransaction();
+
+    // Delete the product from the category-specific table
+    const deleteFromCategoryQuery = `DELETE FROM ${categoryTableName} WHERE id = ?`;
+    await connection.query(deleteFromCategoryQuery, [id]);
+
+    // Delete associated images
+    const deleteImagesQuery = `DELETE FROM product_images WHERE product_id = ?`;
     await connection.query(deleteImagesQuery, [id]);
-    // Delete the product
+
+    // Delete the product from the products table
+    const deleteProductQuery = `DELETE FROM products WHERE id = ?`;
     const [result] = await connection.query(deleteProductQuery, [id]);
 
+    await connection.commit();
     connection.release();
 
     if (result.affectedRows > 0) {
-      res.json({ success: true, message: 'Product deleted successfully' });
+      return res.json({ success: true, message: 'Product and associated data deleted successfully' });
     } else {
-      res.status(404).json({ success: false, message: 'Product not found' });
+      return res.status(404).json({ success: false, message: 'Product not found' });
     }
   } catch (error) {
     console.error('Error deleting product:', error);
-    res.status(500).json({ success: false, message: 'Failed to delete product' });
+    await connection.rollback();
+    connection.release();
+    return res.status(500).json({ success: false, message: 'Failed to delete product' });
   }
 });
 
