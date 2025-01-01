@@ -157,11 +157,6 @@ app.post('/login', async (req, res) => {
   }
 });
 
-
-const bcrypt = require('bcrypt');
-
-const bcrypt = require('bcrypt');
-
 app.post('/loginadmin', async (req, res) => {
   const { email, password } = req.body;
 
