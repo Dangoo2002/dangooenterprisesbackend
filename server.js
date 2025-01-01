@@ -337,23 +337,31 @@ app.delete('/cart/:user_id/:product_id', async (req, res) => {
     const userId = parseInt(user_id, 10);
     const productId = parseInt(product_id, 10);
 
-    // Check if the item exists in the cart
+    // Fetch the cart item associated with the product_id
     const [cartItem] = await connection.query(
-      `SELECT id FROM cart WHERE user_id = ? AND product_id = ?`,
+      `
+      SELECT c.id AS cart_id 
+      FROM cart c
+      JOIN products p ON c.product_id = p.id
+      WHERE c.user_id = ? AND p.id = ?
+      `,
       [userId, productId]
     );
 
+    // Check if the item exists in the cart
     if (cartItem.length === 0) {
       connection.release();
       return res.status(404).json({ success: false, message: 'Item not found in cart' });
     }
 
-    const cartId = cartItem[0].id;
+    const cartId = cartItem[0].cart_id;
 
     // Execute the DELETE query to remove the item from the cart
     const [deleteResult] = await connection.query(
-      `DELETE FROM cart WHERE user_id = ? AND product_id = ?`,
-      [userId, productId]
+      `
+      DELETE FROM cart WHERE user_id = ? AND id = ?
+      `,
+      [userId, cartId]
     );
 
     connection.release();
@@ -364,8 +372,7 @@ app.delete('/cart/:user_id/:product_id', async (req, res) => {
 
     console.log('Item deleted successfully:', { userId, productId });
 
-    // Return the cart ID for client reference (if needed)
-    return res.json({ success: true, message: 'Item removed from cart', cartId });
+    return res.json({ success: true, message: 'Item removed from cart', productId });
   } catch (error) {
     console.error('Database error:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to remove item from cart' });
