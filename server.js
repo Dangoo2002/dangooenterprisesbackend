@@ -322,40 +322,39 @@ app.get('/cart/:userId', async (req, res) => {
 
 
 
-// DELETE /cart/:user_id/:item_id
-app.delete('/cart/:user_id/:item_id', async (req, res) => {
-  const { user_id, item_id } = req.params;
+// DELETE /cart/:user_id/:product_id
+app.delete('/cart/:user_id/:product_id', async (req, res) => {
+  const { user_id, product_id } = req.params;
 
-  console.log('Received DELETE request with:', { user_id, item_id });
+  console.log('Received DELETE request with:', { user_id, product_id });
 
-  if (!user_id || !item_id) {
+  if (!user_id || !product_id) {
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
   try {
     const connection = await pool.getConnection();
     const userId = parseInt(user_id, 10);
-    const itemId = parseInt(item_id, 10);
-
-    // Fetch the product_id from the cart by joining the products table
-    const [cartItem] = await connection.query(`
-      SELECT c.item_id AS product_id FROM cart c
-      LEFT JOIN products p ON c.item_id = p.id
-      WHERE c.user_id = ? AND c.id = ?
-    `, [userId, itemId]);
+    const productId = parseInt(product_id, 10);
 
     // Check if the item exists in the cart
+    const [cartItem] = await connection.query(
+      `SELECT id FROM cart WHERE user_id = ? AND product_id = ?`,
+      [userId, productId]
+    );
+
     if (cartItem.length === 0) {
       connection.release();
       return res.status(404).json({ success: false, message: 'Item not found in cart' });
     }
 
-    const productId = cartItem[0].product_id;
+    const cartId = cartItem[0].id;
 
     // Execute the DELETE query to remove the item from the cart
-    const [deleteResult] = await connection.query(`
-      DELETE FROM cart WHERE user_id = ? AND id = ?
-    `, [userId, itemId]);
+    const [deleteResult] = await connection.query(
+      `DELETE FROM cart WHERE user_id = ? AND product_id = ?`,
+      [userId, productId]
+    );
 
     connection.release();
 
@@ -363,10 +362,10 @@ app.delete('/cart/:user_id/:item_id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Item could not be deleted' });
     }
 
-    console.log('Item deleted successfully:', { userId, itemId });
+    console.log('Item deleted successfully:', { userId, productId });
 
-    // Return the product_id for redirection after deletion
-    return res.json({ success: true, message: 'Item removed from cart', productId });
+    // Return the cart ID for client reference (if needed)
+    return res.json({ success: true, message: 'Item removed from cart', cartId });
   } catch (error) {
     console.error('Database error:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to remove item from cart' });
