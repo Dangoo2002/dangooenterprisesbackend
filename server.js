@@ -158,29 +158,58 @@ app.post('/login', async (req, res) => {
 });
 
 
+const bcrypt = require('bcrypt');
+
+const bcrypt = require('bcrypt');
+
 app.post('/loginadmin', async (req, res) => {
   const { email, password } = req.body;
 
+  console.log('Login Request Received:', { email, password });
+
   try {
     const connection = await pool.getConnection();
+    console.log('Database connection established.');
+
     const sql = 'SELECT * FROM users WHERE email = ?';
     const [results] = await connection.query(sql, [email]);
+    console.log('Database Query Executed:', { query: sql, email });
+
     connection.release();
+    console.log('Database connection released.');
 
     if (results.length > 0) {
       const user = results[0];
+      console.log('User Found:', { id: user.id, email: user.email, role: user.role });
 
-    
-      if (password === user.password) {
-        return res.json({
-          success: true,
-          message: 'Login successful',
-          user: { id: user.id, email: user.email }
-        });
+      // Verify the hashed password
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+      console.log('Password Validation Result:', isPasswordValid);
+
+      if (isPasswordValid) {
+        // Check if the user is an admin
+        if (user.role && user.role === 'admin') {
+          console.log('Admin Access Granted:', { id: user.id, email: user.email });
+
+          return res.json({
+            success: true,
+            message: 'Login successful',
+            user: { id: user.id, email: user.email, role: user.role },
+          });
+        } else {
+          console.log('Access Denied: User is not an admin.', { id: user.id, email: user.email, role: user.role });
+
+          return res.status(403).json({
+            success: false,
+            message: 'Access denied: Admins only',
+          });
+        }
       } else {
+        console.log('Invalid Password:', { email });
         return res.status(401).json({ success: false, message: 'Invalid email or password' });
       }
     } else {
+      console.log('No User Found for Email:', { email });
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
   } catch (error) {
@@ -188,6 +217,7 @@ app.post('/loginadmin', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Admin login failed' });
   }
 });
+
 
 
 app.post('/cart/add', async (req, res) => {
