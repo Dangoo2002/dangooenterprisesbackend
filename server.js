@@ -61,15 +61,8 @@ const storage = multer.memoryStorage();
 const upload = multer({
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
-  fileFilter: (req, file, cb) => {
-    const allowedImageFormats = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    if (allowedImageFormats.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only jpeg, jpg, png, or webp are allowed.'), false);
-    }
-  }
 });
+
 
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword } = req.body;
