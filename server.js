@@ -342,7 +342,7 @@ app.delete('/cart/:user_id/:product_id', async (req, res) => {
       `
       SELECT c.id AS cart_id 
       FROM cart c
-      JOIN products p ON c.product_id = p.id
+      JOIN products p ON c.item_id = p.id
       WHERE c.user_id = ? AND p.id = ?
       `,
       [userId, productId]
