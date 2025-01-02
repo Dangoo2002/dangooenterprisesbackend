@@ -573,10 +573,8 @@ app.post('/api/products', upload.array('images', 10), async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid category' });
   }
 
-  let connection = null;
-
   try {
-    connection = await pool.getConnection();
+    const connection = await pool.getConnection();
     await connection.beginTransaction();
 
     const insertProductQuery = `INSERT INTO products (title, description, price, is_new, category_id) VALUES (?, ?, ?, ?, ?)`;
@@ -592,10 +590,8 @@ app.post('/api/products', upload.array('images', 10), async (req, res) => {
       const insertCategoryImageQuery = `UPDATE ${categoryTableName} SET image = ? WHERE id = ?`;
 
       for (let image of images) {
-        // Save raw buffer or file path
-        const filePath = `/uploads/${image.filename}`;
-        await connection.query(insertImageQuery, [productId, filePath]);
-        await connection.query(insertCategoryImageQuery, [filePath, productId]);
+        await connection.query(insertImageQuery, [productId, image.buffer]); // Store raw image buffer or file data
+        await connection.query(insertCategoryImageQuery, [image.buffer, productId]);
       }
     }
 
@@ -604,13 +600,12 @@ app.post('/api/products', upload.array('images', 10), async (req, res) => {
     return res.json({ success: true, message: 'Product and images added successfully!' });
   } catch (error) {
     console.error('Database error:', error.message);
-    if (connection) {
-      await connection.rollback();
-      connection.release();
-    }
+    await connection.rollback();
+    connection.release();
     return res.status(500).json({ success: false, message: 'Failed to add product' });
   }
 });
+
 
 app.get('/api/products/data', async (req, res) => {
   try {
