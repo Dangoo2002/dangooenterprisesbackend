@@ -67,14 +67,23 @@ const upload = multer({
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword } = req.body;
 
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+
   if (password !== confirmPassword) {
     return res.status(400).json({ success: false, message: 'Passwords do not match' });
+  }
+
+  if (!passwordRegex.test(password)) {
+    return res.status(400).json({
+      success: false,
+      message:
+        'Password must have at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character.',
+    });
   }
 
   try {
     const connection = await pool.getConnection();
     try {
-
       const saltRounds = 10;
       const hashedPassword = await bcrypt.hash(password, saltRounds);
 
@@ -104,10 +113,19 @@ app.post('/api/change-password', async (req, res) => {
     return res.status(400).json({ success: false, message: 'All fields are required.' });
   }
 
+  // Password validation regex
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,}$/;
+
+  if (!passwordRegex.test(newPassword)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Password must have at least 8 characters, including a symbol, an uppercase letter, a lowercase letter, and a number.',
+    });
+  }
+
   try {
     const connection = await pool.getConnection();
     try {
-      // Step 1: Fetch the user's current hashed password from the database
       const query = 'SELECT password FROM signup WHERE id = ?';
       const [rows] = await connection.query(query, [userId]);
 
@@ -117,17 +135,13 @@ app.post('/api/change-password', async (req, res) => {
 
       const hashedPassword = rows[0].password;
 
-      // Step 2: Verify the current password
       const isMatch = await bcrypt.compare(currentPassword, hashedPassword);
       if (!isMatch) {
         return res.status(400).json({ success: false, message: 'Current password is incorrect.' });
       }
 
-      // Step 3: Hash the new password
       const saltRounds = 10;
       const newHashedPassword = await bcrypt.hash(newPassword, saltRounds);
-
-      // Step 4: Update the password in the database
       const updateQuery = 'UPDATE signup SET password = ? WHERE id = ?';
       await connection.query(updateQuery, [newHashedPassword, userId]);
 
@@ -145,18 +159,16 @@ app.post('/api/change-password', async (req, res) => {
 });
 
 
+
+
 // Endpoint to get the total number of users
 app.get('/api/signup/total', async (req, res) => {
   try {
     const connection = await pool.getConnection();
-    
-    // Query to get the total count of users
     const query = 'SELECT COUNT(*) AS totalUsers FROM signup';
-    
     const [rows] = await connection.query(query);
     connection.release();
     
-    // Return the count of users as a response
     const totalUsers = rows[0].totalUsers;
     return res.json({ success: true, totalUsers });
   } catch (error) {
@@ -262,7 +274,7 @@ app.post('/cart/add', async (req, res) => {
 
   console.log('Incoming request to add to cart:', { user_id, item_id, quantity, total_price });
 
-  if (!user_id || !item_id || !quantity || total_price == null) {  // Ensure total_price is not null
+  if (!user_id || !item_id || !quantity || total_price == null) {  
     console.error('Missing required fields:', { user_id, item_id, quantity, total_price });
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
