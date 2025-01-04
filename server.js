@@ -96,6 +96,55 @@ app.post('/signup', async (req, res) => {
   }
 });
 
+
+app.post('/api/change-password', async (req, res) => {
+  const { userId, currentPassword, newPassword } = req.body;
+
+  if (!userId || !currentPassword || !newPassword) {
+    return res.status(400).json({ success: false, message: 'All fields are required.' });
+  }
+
+  try {
+    const connection = await pool.getConnection();
+    try {
+      // Step 1: Fetch the user's current hashed password from the database
+      const query = 'SELECT password FROM signup WHERE id = ?';
+      const [rows] = await connection.query(query, [userId]);
+
+      if (rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'User not found.' });
+      }
+
+      const hashedPassword = rows[0].password;
+
+      // Step 2: Verify the current password
+      const isMatch = await bcrypt.compare(currentPassword, hashedPassword);
+      if (!isMatch) {
+        return res.status(400).json({ success: false, message: 'Current password is incorrect.' });
+      }
+
+      // Step 3: Hash the new password
+      const saltRounds = 10;
+      const newHashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+      // Step 4: Update the password in the database
+      const updateQuery = 'UPDATE signup SET password = ? WHERE id = ?';
+      await connection.query(updateQuery, [newHashedPassword, userId]);
+
+      return res.json({ success: true, message: 'Password changed successfully.' });
+    } catch (err) {
+      console.error('Database error:', err.message);
+      return res.status(500).json({ success: false, message: 'Failed to update password.' });
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error('Error:', error.message);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+
 // Endpoint to get the total number of users
 app.get('/api/signup/total', async (req, res) => {
   try {
