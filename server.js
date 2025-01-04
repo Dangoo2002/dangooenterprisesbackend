@@ -106,6 +106,38 @@ app.post('/signup', async (req, res) => {
 });
 
 
+app.delete('/delete-account', async (req, res) => {
+  const { userId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ success: false, message: 'User ID is required' });
+  }
+
+  try {
+    const connection = await pool.getConnection();
+    try {
+      const sql = 'DELETE FROM signup WHERE id = ?';
+      const [result] = await connection.query(sql, [userId]);
+
+      connection.release();
+
+      if (result.affectedRows > 0) {
+        return res.json({ success: true, message: 'Account deleted successfully' });
+      } else {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+    } catch (err) {
+      connection.release();
+      console.error('Database error: ' + err.message);
+      return res.status(500).json({ success: false, message: 'Failed to delete account' });
+    }
+  } catch (error) {
+    console.error('Error: ' + error.message);
+    return res.status(500).json({ success: false, message: 'Failed to delete account' });
+  }
+});
+
+
 app.post('/api/change-password', async (req, res) => {
   const { userId, currentPassword, newPassword } = req.body;
 
