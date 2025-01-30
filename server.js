@@ -84,11 +84,19 @@ app.post('/signup', async (req, res) => {
   try {
     const connection = await pool.getConnection();
     try {
+      // Create a new user in Firebase Auth
+      const auth = getAuth();
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Hash the password before saving to the database
       const saltRounds = 10;
       const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-      const sql = 'INSERT INTO signup (email, password) VALUES (?, ?)';
-      await connection.query(sql, [email, hashedPassword]);
+      // Insert the user into your MySQL database (signup table)
+      const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
+      await connection.query(sql, [user.uid, email, hashedPassword]);
+      
       connection.release();
       return res.json({ success: true, message: 'Registration successful' });
     } catch (err) {
@@ -104,6 +112,7 @@ app.post('/signup', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Registration failed' });
   }
 });
+
 
 
 app.delete('/delete-account', async (req, res) => {
