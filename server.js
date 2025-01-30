@@ -78,85 +78,86 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
 });
 
-// Sign-up endpoint
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword, token, signupMethod, uid } = req.body;
 
-  // If using Google Sign-In, verify the ID token sent from the client
-  if (signupMethod === 'google' && token) {
-    try {
-      const decodedToken = await admin.auth().verifyIdToken(token);
-      const { uid, email } = decodedToken;
+  const connection = await pool.getConnection();
+  try {
+    // Google Sign-In Handling
+    if (signupMethod === 'google' && token) {
+      try {
+        const decodedToken = await admin.auth().verifyIdToken(token);
+        const { uid, email } = decodedToken;
 
-      // Check if the user already exists in the database
-      const connection = await pool.getConnection();
-      const [existingUser] = await connection.query('SELECT * FROM signup WHERE user_id = ?', [uid]);
+        // Check if user already exists in MySQL
+        const [existingUser] = await connection.query('SELECT * FROM signup WHERE user_id = ?', [uid]);
 
-      if (existingUser.length > 0) {
-        connection.release();
-        return res.status(400).json({ success: false, message: 'User already exists' });
+        if (existingUser.length > 0) {
+          // User already exists in MySQL, redirect them to login
+          return res.status(200).json({ success: true, message: 'User already exists, proceed to login' });
+        }
+
+        // Insert the new user into MySQL
+        const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
+        await connection.query(sql, [uid, email, '']); // No password for Google sign-in
+
+        return res.json({ success: true, message: 'User registered successfully' });
+      } catch (error) {
+        console.error('Google sign-in verification error:', error);
+        return res.status(500).json({ success: false, message: 'Google sign-in failed' });
+      }
+    }
+
+    // Email/Password Signup Handling
+    if (signupMethod === 'email') {
+      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+
+      if (password !== confirmPassword) {
+        return res.status(400).json({ success: false, message: 'Passwords do not match' });
+      }
+      if (!passwordRegex.test(password)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Password must have at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character.',
+        });
       }
 
-      // Insert the new user into the signup table
-      const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
-      await connection.query(sql, [uid, email, '']); // No password for Google sign-in
-      connection.release();
-
-      return res.json({ success: true, message: 'User registered successfully' });
-    } catch (error) {
-      console.error('Google sign-in verification error:', error);
-      return res.status(500).json({ success: false, message: 'Google sign-in failed' });
-    }
-  }
-
-  // Handle Email/Password signup
-  if (signupMethod === 'email') {
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-
-    // Validate password and confirmPassword
-    if (password !== confirmPassword) {
-      return res.status(400).json({ success: false, message: 'Passwords do not match' });
-    }
-    if (!passwordRegex.test(password)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password must have at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character.',
-      });
-    }
-
-    try {
-      const connection = await pool.getConnection();
       try {
-        // Create Firebase user and get the UID
-        const userRecord = await admin.auth().createUser({ email, password });
-        const uid = userRecord.uid; // Capture the UID from Firebase
+        // Check if user already exists in MySQL
+        const [existingUser] = await connection.query('SELECT * FROM signup WHERE email = ?', [email]);
+        if (existingUser.length > 0) {
+          return res.status(400).json({ success: false, message: 'Email already exists, please log in' });
+        }
 
-        // Hash the password
+        // Create Firebase user
+        const userRecord = await admin.auth().createUser({ email, password });
+        const firebaseUid = userRecord.uid;
+
+        // Hash password
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-        // Insert user into the signup table with the UID and email
+        // Insert new user into MySQL
         const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
-        await connection.query(sql, [uid, email, hashedPassword]);
+        await connection.query(sql, [firebaseUid, email, hashedPassword]);
 
-        connection.release();
         return res.json({ success: true, message: 'Registration successful' });
       } catch (err) {
-        connection.release();
         if (err.code === 'ER_DUP_ENTRY') {
           return res.status(400).json({ success: false, message: 'Email already exists' });
         }
         console.error('Database error:', err.message);
         return res.status(500).json({ success: false, message: 'Registration failed' });
       }
-    } catch (error) {
-      console.error('Error creating Firebase user:', error.message);
-      return res.status(500).json({ success: false, message: 'Registration failed' });
     }
-  }
 
-  // If no valid signup method is provided
-  return res.status(400).json({ success: false, message: 'Invalid signup method' });
+    return res.status(400).json({ success: false, message: 'Invalid signup method' });
+  } catch (error) {
+    console.error('Error processing signup:', error);
+    return res.status(500).json({ success: false, message: 'Signup failed' });
+  } finally {
+    connection.release();
+  }
 });
 
 
