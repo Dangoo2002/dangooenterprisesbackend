@@ -60,10 +60,13 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Firebase Admin setup
-const serviceAccount = require('./config/serviceKey.json');
+// Firebase Admin setup using environment variables
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+  credential: admin.credential.cert({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+  }),
 });
 
 // Multer setup for file uploads (if needed)
@@ -75,70 +78,48 @@ const upload = multer({
 
 // Sign-up endpoint
 app.post('/signup', async (req, res) => {
-  const { email, password, confirmPassword, token, signupMethod } = req.body;  // token for Google Sign-In
+  const { email, password, confirmPassword, token, signupMethod } = req.body;
 
   // If using Google Sign-In, verify the ID token sent from the client
   if (signupMethod === 'google' && token) {
     try {
-      // Verify the Firebase ID token using Firebase Admin SDK
       const decodedToken = await admin.auth().verifyIdToken(token);
-      const { uid, email } = decodedToken; // Get Firebase user info
-
-      // Check if the user already exists in the database
+      const { uid, email } = decodedToken;
       const connection = await pool.getConnection();
       const [existingUser] = await connection.query('SELECT * FROM signup WHERE user_id = ?', [uid]);
-
       if (existingUser.length > 0) {
-        // If user already exists, return a message
         connection.release();
         return res.status(400).json({ success: false, message: 'User already exists' });
       }
-
-      // If the user does not exist, insert the user into the database
       const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
-      await connection.query(sql, [uid, email, '']);  // No password needed for Google sign-in
-
+      await connection.query(sql, [uid, email, '']);
       connection.release();
       return res.json({ success: true, message: 'User registered successfully' });
-
     } catch (error) {
       console.error('Google sign-in verification error:', error);
       return res.status(500).json({ success: false, message: 'Google sign-in failed' });
     }
   }
 
-  // Handle Email/Password signup (normal signup)
+  // Handle Email/Password signup
   const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-
   if (password !== confirmPassword) {
     return res.status(400).json({ success: false, message: 'Passwords do not match' });
   }
-
   if (!passwordRegex.test(password)) {
     return res.status(400).json({
       success: false,
-      message:
-        'Password must have at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character.',
+      message: 'Password must have at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character.',
     });
   }
-
   try {
     const connection = await pool.getConnection();
     try {
-      // Create the user with Firebase Admin SDK (email/password)
-      const user = await admin.auth().createUser({
-        email,
-        password,
-      });
-
-      // Hash the password before saving to the database (for security)
+      const user = await admin.auth().createUser({ email, password });
       const saltRounds = 10;
       const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-      // Insert the new user into your MySQL database
       const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
       await connection.query(sql, [user.uid, email, hashedPassword]);
-
       connection.release();
       return res.json({ success: true, message: 'Registration successful' });
     } catch (err) {
@@ -146,7 +127,7 @@ app.post('/signup', async (req, res) => {
       if (err.code === 'ER_DUP_ENTRY') {
         return res.status(400).json({ success: false, message: 'Email already exists' });
       }
-      console.error('Database error: ' + err.message);
+      console.error('Database error:', err.message);
       return res.status(500).json({ success: false, message: 'Registration failed' });
     }
   } catch (error) {
@@ -154,6 +135,7 @@ app.post('/signup', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Registration failed' });
   }
 });
+
 
 app.delete('/delete-account', async (req, res) => {
   const { userId } = req.body;
