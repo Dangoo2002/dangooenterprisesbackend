@@ -5,9 +5,6 @@ const mysql = require('mysql2/promise');
 const multer = require('multer');
 require('dotenv').config();
 const bcrypt = require('bcrypt');
-const admin = require('firebase-admin');
-
-
 
 
 const app = express();
@@ -66,82 +63,45 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
 });
 
-const serviceAccount = {
-  "type": process.env.FIREBASE_TYPE,
-  "project_id": process.env.FIREBASE_PROJECT_ID,
-  "private_key_id": process.env.FIREBASE_PRIVATE_KEY_ID,
-  "private_key": process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-  "client_email": process.env.FIREBASE_CLIENT_EMAIL,
-  "client_id": process.env.FIREBASE_CLIENT_ID,
-  "auth_uri": process.env.FIREBASE_AUTH_URI,
-  "token_uri": process.env.FIREBASE_TOKEN_URI,
-  "auth_provider_x509_cert_url": process.env.FIREBASE_AUTH_PROVIDER_X509_CERT_URL,
-  "client_x509_cert_url": process.env.FIREBASE_CLIENT_X509_CERT_URL,
-  "universe_domain": process.env.FIREBASE_UNIVERSE_DOMAIN
-};
-
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
-
-console.log('Firebase Admin SDK initialized');
-
-console.log(process.env);  // Check all loaded environment variables
 
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword } = req.body;
 
   const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
-  // Check if passwords match
   if (password !== confirmPassword) {
     return res.status(400).json({ success: false, message: 'Passwords do not match' });
   }
 
-  // Validate password format
   if (!passwordRegex.test(password)) {
     return res.status(400).json({
       success: false,
-      message: 'Password must have at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character.',
+      message:
+        'Password must have at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character.',
     });
   }
 
   try {
-    // Create user in Firebase Authentication
-    const firebaseUser = await admin.auth().createUser({
-      email: email,
-      password: password,
-    });
-
-    // Hash the password to store it in your database
-    const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-    // Store the user in your database (MySQL)
     const connection = await pool.getConnection();
-    const sql = 'INSERT INTO signup (email, password) VALUES (?, ?)';
-    await connection.query(sql, [email, hashedPassword]);
-    connection.release();
+    try {
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    // Send success response
-    return res.json({ success: true, message: 'Registration successful' });
-
+      const sql = 'INSERT INTO signup (email, password) VALUES (?, ?)';
+      await connection.query(sql, [email, hashedPassword]);
+      connection.release();
+      return res.json({ success: true, message: 'Registration successful' });
+    } catch (err) {
+      connection.release();
+      if (err.code === 'ER_DUP_ENTRY') {
+        return res.status(400).json({ success: false, message: 'Email already exists' });
+      }
+      console.error('Database error: ' + err.message);
+      return res.status(500).json({ success: false, message: 'Registration failed' });
+    }
   } catch (error) {
-    console.error('Error during signup process: ', error);
-
-    // Check if the error is related to Firebase user creation
-    if (error.code === 'auth/email-already-exists') {
-      return res.status(400).json({ success: false, message: 'Email already exists in Firebase' });
-    }
-
-    // Check if the error is related to MySQL user creation
-    if (error.code === 'ER_DUP_ENTRY') {
-      return res.status(400).json({ success: false, message: 'Email already exists in the database' });
-    }
-
-    // Generic error handling
-    return res.status(500).json({ success: false, message: 'Registration failed', error: error.message });
+    console.error('Error: ' + error.message);
+    return res.status(500).json({ success: false, message: 'Registration failed' });
   }
 });
 
