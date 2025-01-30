@@ -264,45 +264,36 @@ app.get('/api/signup/total', async (req, res) => {
 });
 
 
+// Backend: /login endpoint
 app.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { email } = req.body;
 
   try {
     const connection = await pool.getConnection();
-    const sql = 'SELECT * FROM signup WHERE email = ?';
-    const [results] = await connection.query(sql, [email]);
+    const [results] = await connection.query('SELECT * FROM signup WHERE email = ?', [email]);
     connection.release();
 
     if (results.length > 0) {
       const user = results[0];
-
-      // Check if the user is registered via Firebase (no password)
+      
+      // Handle Google users (no password)
       if (user.password === '') {
-        // Allow login for Firebase-authenticated users
         return res.json({
           success: true,
-          message: 'Login successful',
-          user: { id: user.id, email: user.email },
+          user: { id: user.id, email: user.email }
         });
       }
 
-      // For email/password users, verify the password
-      const passwordMatch = await bcrypt.compare(password, user.password);
-
+      // Handle email/password users
+      const passwordMatch = await bcrypt.compare(req.body.password, user.password);
       if (passwordMatch) {
-        return res.json({
-          success: true,
-          message: 'Login successful',
-          user: { id: user.id, email: user.email },
-        });
-      } else {
-        return res.status(401).json({ success: false, message: 'Invalid email or password' });
+        return res.json({ success: true, user: { id: user.id, email: user.email } });
       }
-    } else {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
+
+    return res.status(401).json({ success: false, message: 'Invalid email or password' });
   } catch (error) {
-    console.error('Login error:', error.message);
+    console.error('Login error:', error);
     return res.status(500).json({ success: false, message: 'Login failed' });
   }
 });
