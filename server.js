@@ -6,7 +6,6 @@ const multer = require('multer');
 require('dotenv').config();
 const bcrypt = require('bcrypt');
 const admin = require('firebase-admin');
-const { getAuth, createUserWithEmailAndPassword } = require('firebase/auth'); // Import Firebase Auth methods
 
 // Initialize Express app
 const app = express();
@@ -125,33 +124,36 @@ app.post('/signup', async (req, res) => {
 
   try {
     const connection = await pool.getConnection();
-    // Create a new user in Firebase Auth (for email/password sign-up)
-    const auth = getAuth();
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
+    try {
+      // Create the user with Firebase Admin SDK (email/password)
+      const user = await admin.auth().createUser({
+        email,
+        password,
+      });
 
-    // Hash the password before saving to the database
-    const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
+      // Hash the password before saving to the database (for security)
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    // Insert the user into your MySQL database (signup table)
-    const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
-    await connection.query(sql, [user.uid, email, hashedPassword]);
+      // Insert the new user into your MySQL database
+      const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
+      await connection.query(sql, [user.uid, email, hashedPassword]);
 
-    connection.release();
-    return res.json({ success: true, message: 'Registration successful' });
-
-  } catch (err) {
-    connection.release();
-    if (err.code === 'ER_DUP_ENTRY') {
-      return res.status(400).json({ success: false, message: 'Email already exists' });
+      connection.release();
+      return res.json({ success: true, message: 'Registration successful' });
+    } catch (err) {
+      connection.release();
+      if (err.code === 'ER_DUP_ENTRY') {
+        return res.status(400).json({ success: false, message: 'Email already exists' });
+      }
+      console.error('Database error: ' + err.message);
+      return res.status(500).json({ success: false, message: 'Registration failed' });
     }
-    console.error('Database error: ' + err.message);
+  } catch (error) {
+    console.error('Error creating Firebase user:', error.message);
     return res.status(500).json({ success: false, message: 'Registration failed' });
   }
 });
-
-
 
 app.delete('/delete-account', async (req, res) => {
   const { userId } = req.body;
