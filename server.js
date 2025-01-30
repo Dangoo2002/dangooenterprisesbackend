@@ -77,6 +77,7 @@ const upload = multer({
 });
 
 // Sign-up endpoint
+// Sign-up endpoint
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword, token, signupMethod } = req.body;
 
@@ -115,11 +116,18 @@ app.post('/signup', async (req, res) => {
   try {
     const connection = await pool.getConnection();
     try {
-      const user = await admin.auth().createUser({ email, password });
+      // Create Firebase user and get the UID
+      const userRecord = await admin.auth().createUser({ email, password });
+      const uid = userRecord.uid; // Capture the UID from Firebase
+
+      // Hash the password
       const saltRounds = 10;
       const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+      // Insert user into the signup table with the UID
       const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
-      await connection.query(sql, [user.uid, email, hashedPassword]);
+      await connection.query(sql, [uid, email, hashedPassword]);
+
       connection.release();
       return res.json({ success: true, message: 'Registration successful' });
     } catch (err) {
@@ -135,7 +143,6 @@ app.post('/signup', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Registration failed' });
   }
 });
-
 
 app.delete('/delete-account', async (req, res) => {
   const { userId } = req.body;
