@@ -79,39 +79,34 @@ const upload = multer({
 });
 
 // Sign-up endpoint
+// Sign-up endpoint
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword, token, signupMethod, uid } = req.body;
 
-  // Handle Google Sign-Up
+  // If using Google Sign-In, verify the ID token sent from the client
   if (signupMethod === 'google' && token) {
     try {
       const decodedToken = await admin.auth().verifyIdToken(token);
       const { uid, email } = decodedToken;
-
-      // Check if user exists
       const connection = await pool.getConnection();
       const [existingUser] = await connection.query('SELECT * FROM signup WHERE user_id = ?', [uid]);
-
       if (existingUser.length > 0) {
         connection.release();
         return res.status(400).json({ success: false, message: 'User already exists' });
       }
-
-      // Insert new user
-      await connection.query('INSERT INTO signup (user_id, email, password) VALUES (?, ?, "")', [uid, email]);
+      const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
+      await connection.query(sql, [uid, email, '']);
       connection.release();
       return res.json({ success: true, message: 'User registered successfully' });
     } catch (error) {
-      console.error('Google signup error:', error);
-      return res.status(500).json({ success: false, message: 'Google signup failed' });
+      console.error('Google sign-in verification error:', error);
+      return res.status(500).json({ success: false, message: 'Google sign-in failed' });
     }
   }
 
   // Handle Email/Password signup
   if (signupMethod === 'email') {
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-
-    // Validate password and confirmPassword
     if (password !== confirmPassword) {
       return res.status(400).json({ success: false, message: 'Passwords do not match' });
     }
@@ -121,7 +116,6 @@ app.post('/signup', async (req, res) => {
         message: 'Password must have at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character.',
       });
     }
-
     try {
       const connection = await pool.getConnection();
       try {
@@ -156,7 +150,6 @@ app.post('/signup', async (req, res) => {
   // If no valid signup method is provided
   return res.status(400).json({ success: false, message: 'Invalid signup method' });
 });
-
 
 app.delete('/delete-account', async (req, res) => {
   const { userId } = req.body;
@@ -262,12 +255,16 @@ app.get('/api/signup/total', async (req, res) => {
 });
 
 
-// Backend: /login endpoint
 app.post('/login', async (req, res) => {
-  const { idToken, signupMethod } = req.body;
+  const { email, password, idToken, signupMethod } = req.body;
 
   try {
+    // Handle Google Login
     if (signupMethod === 'google') {
+      if (!idToken) {
+        return res.status(400).json({ success: false, message: 'Missing ID token' });
+      }
+
       // Verify Firebase ID token
       const decodedToken = await admin.auth().verifyIdToken(idToken);
       const uid = decodedToken.uid;
@@ -278,50 +275,40 @@ app.post('/login', async (req, res) => {
       connection.release();
 
       if (results.length > 0) {
-        return res.json({ 
-          success: true, 
-          user: { id: results[0].id, email: results[0].email } 
+        return res.json({
+          success: true,
+          user: { id: results[0].id, email: results[0].email }
         });
       } else {
-        return res.status(404).json({ success: false, message: 'User not found' });
+        return res.status(401).json({ success: false, message: 'User not found' });
       }
     }
 
-    // Handle email/password users
+    // Handle Email/Password Login (existing logic)
     const connection = await pool.getConnection();
     const [results] = await connection.query('SELECT * FROM signup WHERE email = ?', [email]);
     connection.release();
 
     if (results.length > 0) {
       const user = results[0];
-      const passwordMatch = await bcrypt.compare(req.body.password, user.password);
+      const passwordMatch = await bcrypt.compare(password, user.password);
       if (passwordMatch) {
-        return res.json({ success: true, user: { id: user.id, email: user.email } });
+        return res.json({
+          success: true,
+          user: { id: user.id, email: user.email }
+        });
+      } else {
+        return res.status(401).json({ success: false, message: 'Invalid email or password' });
       }
+    } else {
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
-
-    return res.status(401).json({ success: false, message: 'Invalid email or password' });
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('Login error:', error.message);
     return res.status(500).json({ success: false, message: 'Login failed' });
   }
 });
 
-app.post('/check-user', async (req, res) => {
-  const { email } = req.body;
-
-  try {
-    const connection = await pool.getConnection();
-    const sql = 'SELECT * FROM signup WHERE email = ?';
-    const [results] = await connection.query(sql, [email]);
-    connection.release();
-
-    return res.json({ exists: results.length > 0 });
-  } catch (error) {
-    console.error('Error checking user:', error.message);
-    return res.status(500).json({ success: false, message: 'Error checking user' });
-  }
-});
 
 
 app.post('/loginadmin', async (req, res) => {
