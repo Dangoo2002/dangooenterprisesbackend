@@ -276,14 +276,24 @@ app.post('/login', async (req, res) => {
     if (results.length > 0) {
       const user = results[0];
 
-     
+      // Check if the user is registered via Firebase (no password)
+      if (user.password === '') {
+        // Allow login for Firebase-authenticated users
+        return res.json({
+          success: true,
+          message: 'Login successful',
+          user: { id: user.id, email: user.email },
+        });
+      }
+
+      // For email/password users, verify the password
       const passwordMatch = await bcrypt.compare(password, user.password);
 
       if (passwordMatch) {
         return res.json({
           success: true,
           message: 'Login successful',
-          user: { id: user.id, email: user.email }
+          user: { id: user.id, email: user.email },
         });
       } else {
         return res.status(401).json({ success: false, message: 'Invalid email or password' });
@@ -296,6 +306,24 @@ app.post('/login', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Login failed' });
   }
 });
+
+
+app.post('/check-user', async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    const connection = await pool.getConnection();
+    const sql = 'SELECT * FROM signup WHERE email = ?';
+    const [results] = await connection.query(sql, [email]);
+    connection.release();
+
+    return res.json({ exists: results.length > 0 });
+  } catch (error) {
+    console.error('Error checking user:', error.message);
+    return res.status(500).json({ success: false, message: 'Error checking user' });
+  }
+});
+
 
 app.post('/loginadmin', async (req, res) => {
   const { email, password } = req.body;
