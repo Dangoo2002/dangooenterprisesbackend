@@ -60,7 +60,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Firebase Admin setup using environment variables
+
 admin.initializeApp({
   credential: admin.credential.cert({
     projectId: process.env.FIREBASE_PROJECT_ID,
