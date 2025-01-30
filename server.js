@@ -3,11 +3,10 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const mysql = require('mysql2/promise'); 
 const multer = require('multer');
-const path = require('path');
 require('dotenv').config();
 const bcrypt = require('bcrypt');
 const admin = require('firebase-admin');
-const serviceAccount = require(path.join(__dirname, 'config', 'serviceKey.json'));
+
 
 
 
@@ -67,11 +66,27 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
 });
 
+const serviceAccount = {
+  "type": process.env.FIREBASE_TYPE,
+  "project_id": process.env.FIREBASE_PROJECT_ID,
+  "private_key_id": process.env.FIREBASE_PRIVATE_KEY_ID,
+  "private_key": process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+  "client_email": process.env.FIREBASE_CLIENT_EMAIL,
+  "client_id": process.env.FIREBASE_CLIENT_ID,
+  "auth_uri": process.env.FIREBASE_AUTH_URI,
+  "token_uri": process.env.FIREBASE_TOKEN_URI,
+  "auth_provider_x509_cert_url": process.env.FIREBASE_AUTH_PROVIDER_X509_CERT_URL,
+  "client_x509_cert_url": process.env.FIREBASE_CLIENT_X509_CERT_URL,
+  "universe_domain": process.env.FIREBASE_UNIVERSE_DOMAIN
+};
+
+
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
 console.log('Firebase Admin SDK initialized');
+
 
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword } = req.body;
