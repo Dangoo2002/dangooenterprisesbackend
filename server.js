@@ -266,25 +266,35 @@ app.get('/api/signup/total', async (req, res) => {
 
 // Backend: /login endpoint
 app.post('/login', async (req, res) => {
-  const { email } = req.body;
+  const { email, idToken, signupMethod } = req.body;
 
   try {
+    // Verify Firebase ID token for Google users
+    if (signupMethod === 'google') {
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      const uid = decodedToken.uid;
+
+      const connection = await pool.getConnection();
+      const [results] = await connection.query('SELECT * FROM signup WHERE user_id = ?', [uid]);
+      connection.release();
+
+      if (results.length > 0) {
+        return res.json({ 
+          success: true, 
+          user: { id: results[0].id, email: results[0].email } 
+        });
+      } else {
+        return res.status(401).json({ success: false, message: 'User not found' });
+      }
+    }
+
+    // Handle email/password users
     const connection = await pool.getConnection();
     const [results] = await connection.query('SELECT * FROM signup WHERE email = ?', [email]);
     connection.release();
 
     if (results.length > 0) {
       const user = results[0];
-      
-      // Handle Google users (no password)
-      if (user.password === '') {
-        return res.json({
-          success: true,
-          user: { id: user.id, email: user.email }
-        });
-      }
-
-      // Handle email/password users
       const passwordMatch = await bcrypt.compare(req.body.password, user.password);
       if (passwordMatch) {
         return res.json({ success: true, user: { id: user.id, email: user.email } });
