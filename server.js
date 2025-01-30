@@ -64,9 +64,8 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
 });
 
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);  // Parse the JSON string from .env
+const serviceAccount = require('./config/serviceKey.json');  
 
-// Initialize Firebase Admin SDK
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
