@@ -2,4 +2,5 @@
 .vercel
 .env
 /venv/
-/config/
+/config/config/serviceAccountKey.json
+config/serviceKey.json
