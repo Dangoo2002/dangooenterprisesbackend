@@ -64,7 +64,7 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
 });
 
-const serviceAccount = require('./config/serviceKey.json');  
+const serviceAccount = require('../backend/config/serviceKey.json');  
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
