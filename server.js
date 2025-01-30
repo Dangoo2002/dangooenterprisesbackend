@@ -367,7 +367,19 @@ app.post('/loginadmin', async (req, res) => {
   }
 });
 
-
+// Backend: Ensure this endpoint returns JSON
+app.post('/check-user', async (req, res) => {
+  const { email } = req.body;
+  try {
+    const connection = await pool.getConnection();
+    const [results] = await connection.query('SELECT * FROM signup WHERE email = ?', [email]);
+    connection.release();
+    res.json({ exists: results.length > 0 }); // Always return JSON
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ error: 'Failed to check user existence' }); // Error response in JSON
+  }
+});
 
 app.post('/cart/add', async (req, res) => {
   const { user_id, item_id, quantity, total_price } = req.body;
