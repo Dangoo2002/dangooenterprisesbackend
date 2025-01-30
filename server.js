@@ -79,32 +79,33 @@ const upload = multer({
 });
 
 // Sign-up endpoint
-// Sign-up endpoint
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword, token, signupMethod, uid } = req.body;
 
-  // If using Google Sign-In, verify the ID token sent from the client
+  // Handle Google Sign-Up
   if (signupMethod === 'google' && token) {
     try {
       const decodedToken = await admin.auth().verifyIdToken(token);
-      const { uid, email } = decodedToken;
+      const { uid: firebaseUid, email: firebaseEmail } = decodedToken; // Rename variables to avoid conflict
+
       const connection = await pool.getConnection();
-      const [existingUser] = await connection.query('SELECT * FROM signup WHERE user_id = ?', [uid]);
+      const [existingUser] = await connection.query('SELECT * FROM signup WHERE user_id = ?', [firebaseUid]);
+
       if (existingUser.length > 0) {
         connection.release();
         return res.status(400).json({ success: false, message: 'User already exists' });
       }
-      const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
-      await connection.query(sql, [uid, email, '']);
+
+      // Insert new user with Firebase UID and email
+      await connection.query('INSERT INTO signup (user_id, email, password) VALUES (?, ?, "")', [firebaseUid, firebaseEmail]);
       connection.release();
+
       return res.json({ success: true, message: 'User registered successfully' });
     } catch (error) {
-      console.error('Google sign-in verification error:', error);
-      return res.status(500).json({ success: false, message: 'Google sign-in failed' });
+      console.error('Google signup error:', error);
+      return res.status(500).json({ success: false, message: 'Google signup failed' });
     }
   }
-
-  // Handle Email/Password signup
   if (signupMethod === 'email') {
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
     if (password !== confirmPassword) {
