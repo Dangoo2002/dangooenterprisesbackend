@@ -61,13 +61,15 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 
-admin.initializeApp({
-  credential: admin.credential.cert({
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-  }),
-});
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'), // Handle newlines in private key
+    }),
+  });
+}
 
 // Multer setup for file uploads (if needed)
 const storage = multer.memoryStorage();
@@ -77,24 +79,29 @@ const upload = multer({
 });
 
 // Sign-up endpoint
-// Sign-up endpoint
 app.post('/signup', async (req, res) => {
-  const { email, password, confirmPassword, token, signupMethod } = req.body;
+  const { email, password, confirmPassword, token, signupMethod, uid } = req.body;
 
   // If using Google Sign-In, verify the ID token sent from the client
   if (signupMethod === 'google' && token) {
     try {
       const decodedToken = await admin.auth().verifyIdToken(token);
       const { uid, email } = decodedToken;
+
+      // Check if the user already exists in the database
       const connection = await pool.getConnection();
       const [existingUser] = await connection.query('SELECT * FROM signup WHERE user_id = ?', [uid]);
+
       if (existingUser.length > 0) {
         connection.release();
         return res.status(400).json({ success: false, message: 'User already exists' });
       }
+
+      // Insert the new user into the signup table
       const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
-      await connection.query(sql, [uid, email, '']);
+      await connection.query(sql, [uid, email, '']); // No password for Google sign-in
       connection.release();
+
       return res.json({ success: true, message: 'User registered successfully' });
     } catch (error) {
       console.error('Google sign-in verification error:', error);
@@ -103,46 +110,55 @@ app.post('/signup', async (req, res) => {
   }
 
   // Handle Email/Password signup
-  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-  if (password !== confirmPassword) {
-    return res.status(400).json({ success: false, message: 'Passwords do not match' });
-  }
-  if (!passwordRegex.test(password)) {
-    return res.status(400).json({
-      success: false,
-      message: 'Password must have at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character.',
-    });
-  }
-  try {
-    const connection = await pool.getConnection();
+  if (signupMethod === 'email') {
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+
+    // Validate password and confirmPassword
+    if (password !== confirmPassword) {
+      return res.status(400).json({ success: false, message: 'Passwords do not match' });
+    }
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must have at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character.',
+      });
+    }
+
     try {
-      // Create Firebase user and get the UID
-      const userRecord = await admin.auth().createUser({ email, password });
-      const uid = userRecord.uid; // Capture the UID from Firebase
+      const connection = await pool.getConnection();
+      try {
+        // Create Firebase user and get the UID
+        const userRecord = await admin.auth().createUser({ email, password });
+        const uid = userRecord.uid; // Capture the UID from Firebase
 
-      // Hash the password
-      const saltRounds = 10;
-      const hashedPassword = await bcrypt.hash(password, saltRounds);
+        // Hash the password
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-      // Insert user into the signup table with the UID
-      const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
-      await connection.query(sql, [uid, email, hashedPassword]);
+        // Insert user into the signup table with the UID and email
+        const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
+        await connection.query(sql, [uid, email, hashedPassword]);
 
-      connection.release();
-      return res.json({ success: true, message: 'Registration successful' });
-    } catch (err) {
-      connection.release();
-      if (err.code === 'ER_DUP_ENTRY') {
-        return res.status(400).json({ success: false, message: 'Email already exists' });
+        connection.release();
+        return res.json({ success: true, message: 'Registration successful' });
+      } catch (err) {
+        connection.release();
+        if (err.code === 'ER_DUP_ENTRY') {
+          return res.status(400).json({ success: false, message: 'Email already exists' });
+        }
+        console.error('Database error:', err.message);
+        return res.status(500).json({ success: false, message: 'Registration failed' });
       }
-      console.error('Database error:', err.message);
+    } catch (error) {
+      console.error('Error creating Firebase user:', error.message);
       return res.status(500).json({ success: false, message: 'Registration failed' });
     }
-  } catch (error) {
-    console.error('Error creating Firebase user:', error.message);
-    return res.status(500).json({ success: false, message: 'Registration failed' });
   }
+
+  // If no valid signup method is provided
+  return res.status(400).json({ success: false, message: 'Invalid signup method' });
 });
+
 
 app.delete('/delete-account', async (req, res) => {
   const { userId } = req.body;
