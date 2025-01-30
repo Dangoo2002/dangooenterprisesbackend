@@ -87,6 +87,7 @@ admin.initializeApp({
 
 console.log('Firebase Admin SDK initialized');
 
+console.log(process.env);  // Check all loaded environment variables
 
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword } = req.body;
