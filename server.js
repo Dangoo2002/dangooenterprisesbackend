@@ -6,6 +6,8 @@ const multer = require('multer');
 require('dotenv').config();
 const bcrypt = require('bcrypt');
 const admin = require('firebase-admin');
+const serviceAccount = require(path.join(__dirname, 'config', 'serviceKey.json'));
+
 
 
 const app = express();
@@ -63,8 +65,6 @@ const upload = multer({
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
 });
-
-const serviceAccount = require('./config/serviceKey.json');  
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
