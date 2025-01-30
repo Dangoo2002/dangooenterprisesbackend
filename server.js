@@ -1,18 +1,21 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const mysql = require('mysql2/promise'); 
+const mysql = require('mysql2/promise');
 const multer = require('multer');
 require('dotenv').config();
 const bcrypt = require('bcrypt');
+const admin = require('firebase-admin');
+const { getAuth, createUserWithEmailAndPassword } = require('firebase/auth'); // Import Firebase Auth methods
 
-
+// Initialize Express app
 const app = express();
 app.use(express.json());
 app.use(bodyParser.json());
 
 const port = process.env.PORT || 26689;
 
+// Create MySQL pool for connection
 const pool = mysql.createPool({
   host: process.env.MYSQL_HOST,
   user: process.env.MYSQL_USER,
@@ -24,18 +27,19 @@ const pool = mysql.createPool({
   queueLimit: 0
 });
 
+// Check DB connection
 async function checkDbConnection() {
   try {
     const connection = await pool.getConnection();
     console.log("Connected to the MySQL database successfully!");
-    connection.release();  
+    connection.release();
   } catch (error) {
     console.error("Failed to connect to the MySQL database:", error.message);
   }
 }
-
 checkDbConnection();
 
+// CORS setup
 const allowedOrigins = [
   'http://localhost:3000',
   'https://dangooenterprises.vercel.app',
@@ -57,16 +61,54 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+// Firebase Admin setup
+const serviceAccount = require('./config/serviceKey.json');
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+// Multer setup for file uploads (if needed)
 const storage = multer.memoryStorage();
 const upload = multer({
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
 });
 
-
+// Sign-up endpoint
 app.post('/signup', async (req, res) => {
-  const { email, password, confirmPassword } = req.body;
+  const { email, password, confirmPassword, token, signupMethod } = req.body;  // token for Google Sign-In
 
+  // If using Google Sign-In, verify the ID token sent from the client
+  if (signupMethod === 'google' && token) {
+    try {
+      // Verify the Firebase ID token using Firebase Admin SDK
+      const decodedToken = await admin.auth().verifyIdToken(token);
+      const { uid, email } = decodedToken; // Get Firebase user info
+
+      // Check if the user already exists in the database
+      const connection = await pool.getConnection();
+      const [existingUser] = await connection.query('SELECT * FROM signup WHERE user_id = ?', [uid]);
+
+      if (existingUser.length > 0) {
+        // If user already exists, return a message
+        connection.release();
+        return res.status(400).json({ success: false, message: 'User already exists' });
+      }
+
+      // If the user does not exist, insert the user into the database
+      const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
+      await connection.query(sql, [uid, email, '']);  // No password needed for Google sign-in
+
+      connection.release();
+      return res.json({ success: true, message: 'User registered successfully' });
+
+    } catch (error) {
+      console.error('Google sign-in verification error:', error);
+      return res.status(500).json({ success: false, message: 'Google sign-in failed' });
+    }
+  }
+
+  // Handle Email/Password signup (normal signup)
   const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
   if (password !== confirmPassword) {
@@ -83,32 +125,28 @@ app.post('/signup', async (req, res) => {
 
   try {
     const connection = await pool.getConnection();
-    try {
-      // Create a new user in Firebase Auth
-      const auth = getAuth();
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+    // Create a new user in Firebase Auth (for email/password sign-up)
+    const auth = getAuth();
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
 
-      // Hash the password before saving to the database
-      const saltRounds = 10;
-      const hashedPassword = await bcrypt.hash(password, saltRounds);
+    // Hash the password before saving to the database
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-      // Insert the user into your MySQL database (signup table)
-      const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
-      await connection.query(sql, [user.uid, email, hashedPassword]);
-      
-      connection.release();
-      return res.json({ success: true, message: 'Registration successful' });
-    } catch (err) {
-      connection.release();
-      if (err.code === 'ER_DUP_ENTRY') {
-        return res.status(400).json({ success: false, message: 'Email already exists' });
-      }
-      console.error('Database error: ' + err.message);
-      return res.status(500).json({ success: false, message: 'Registration failed' });
+    // Insert the user into your MySQL database (signup table)
+    const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
+    await connection.query(sql, [user.uid, email, hashedPassword]);
+
+    connection.release();
+    return res.json({ success: true, message: 'Registration successful' });
+
+  } catch (err) {
+    connection.release();
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ success: false, message: 'Email already exists' });
     }
-  } catch (error) {
-    console.error('Error: ' + error.message);
+    console.error('Database error: ' + err.message);
     return res.status(500).json({ success: false, message: 'Registration failed' });
   }
 });
