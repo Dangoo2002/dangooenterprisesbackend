@@ -78,86 +78,83 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
 });
 
+// Sign-up endpoint
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword, token, signupMethod, uid } = req.body;
 
-  const connection = await pool.getConnection();
-  try {
-    // Google Sign-In Handling
-    if (signupMethod === 'google' && token) {
-      try {
-        const decodedToken = await admin.auth().verifyIdToken(token);
-        const { uid, email } = decodedToken;
+  // Handle Google Sign-Up
+  if (signupMethod === 'google' && token) {
+    try {
+      const decodedToken = await admin.auth().verifyIdToken(token);
+      const { uid, email } = decodedToken;
 
-        // Check if user already exists in MySQL
-        const [existingUser] = await connection.query('SELECT * FROM signup WHERE user_id = ?', [uid]);
+      // Check if user exists
+      const connection = await pool.getConnection();
+      const [existingUser] = await connection.query('SELECT * FROM signup WHERE user_id = ?', [uid]);
 
-        if (existingUser.length > 0) {
-          // User already exists in MySQL, redirect them to login
-          return res.status(200).json({ success: true, message: 'User already exists, proceed to login' });
-        }
-
-        // Insert the new user into MySQL
-        const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
-        await connection.query(sql, [uid, email, '']); // No password for Google sign-in
-
-        return res.json({ success: true, message: 'User registered successfully' });
-      } catch (error) {
-        console.error('Google sign-in verification error:', error);
-        return res.status(500).json({ success: false, message: 'Google sign-in failed' });
+      if (existingUser.length > 0) {
+        connection.release();
+        return res.status(400).json({ success: false, message: 'User already exists' });
       }
+
+      // Insert new user
+      await connection.query('INSERT INTO signup (user_id, email, password) VALUES (?, ?, "")', [uid, email]);
+      connection.release();
+      return res.json({ success: true, message: 'User registered successfully' });
+    } catch (error) {
+      console.error('Google signup error:', error);
+      return res.status(500).json({ success: false, message: 'Google signup failed' });
+    }
+  }
+
+  // Handle Email/Password signup
+  if (signupMethod === 'email') {
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+
+    // Validate password and confirmPassword
+    if (password !== confirmPassword) {
+      return res.status(400).json({ success: false, message: 'Passwords do not match' });
+    }
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must have at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character.',
+      });
     }
 
-    // Email/Password Signup Handling
-    if (signupMethod === 'email') {
-      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-
-      if (password !== confirmPassword) {
-        return res.status(400).json({ success: false, message: 'Passwords do not match' });
-      }
-      if (!passwordRegex.test(password)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Password must have at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character.',
-        });
-      }
-
+    try {
+      const connection = await pool.getConnection();
       try {
-        // Check if user already exists in MySQL
-        const [existingUser] = await connection.query('SELECT * FROM signup WHERE email = ?', [email]);
-        if (existingUser.length > 0) {
-          return res.status(400).json({ success: false, message: 'Email already exists, please log in' });
-        }
-
-        // Create Firebase user
+        // Create Firebase user and get the UID
         const userRecord = await admin.auth().createUser({ email, password });
-        const firebaseUid = userRecord.uid;
+        const uid = userRecord.uid; // Capture the UID from Firebase
 
-        // Hash password
+        // Hash the password
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-        // Insert new user into MySQL
+        // Insert user into the signup table with the UID and email
         const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
-        await connection.query(sql, [firebaseUid, email, hashedPassword]);
+        await connection.query(sql, [uid, email, hashedPassword]);
 
+        connection.release();
         return res.json({ success: true, message: 'Registration successful' });
       } catch (err) {
+        connection.release();
         if (err.code === 'ER_DUP_ENTRY') {
           return res.status(400).json({ success: false, message: 'Email already exists' });
         }
         console.error('Database error:', err.message);
         return res.status(500).json({ success: false, message: 'Registration failed' });
       }
+    } catch (error) {
+      console.error('Error creating Firebase user:', error.message);
+      return res.status(500).json({ success: false, message: 'Registration failed' });
     }
-
-    return res.status(400).json({ success: false, message: 'Invalid signup method' });
-  } catch (error) {
-    console.error('Error processing signup:', error);
-    return res.status(500).json({ success: false, message: 'Signup failed' });
-  } finally {
-    connection.release();
   }
+
+  // If no valid signup method is provided
+  return res.status(400).json({ success: false, message: 'Invalid signup method' });
 });
 
 
@@ -267,14 +264,15 @@ app.get('/api/signup/total', async (req, res) => {
 
 // Backend: /login endpoint
 app.post('/login', async (req, res) => {
-  const { email, idToken, signupMethod } = req.body;
+  const { idToken, signupMethod } = req.body;
 
   try {
-    // Verify Firebase ID token for Google users
     if (signupMethod === 'google') {
+      // Verify Firebase ID token
       const decodedToken = await admin.auth().verifyIdToken(idToken);
       const uid = decodedToken.uid;
 
+      // Check if user exists in the database
       const connection = await pool.getConnection();
       const [results] = await connection.query('SELECT * FROM signup WHERE user_id = ?', [uid]);
       connection.release();
@@ -285,7 +283,7 @@ app.post('/login', async (req, res) => {
           user: { id: results[0].id, email: results[0].email } 
         });
       } else {
-        return res.status(401).json({ success: false, message: 'User not found' });
+        return res.status(404).json({ success: false, message: 'User not found' });
       }
     }
 
@@ -308,7 +306,6 @@ app.post('/login', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Login failed' });
   }
 });
-
 
 app.post('/check-user', async (req, res) => {
   const { email } = req.body;
