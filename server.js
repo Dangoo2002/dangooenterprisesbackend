@@ -5,6 +5,7 @@ const mysql = require('mysql2/promise');
 const multer = require('multer');
 require('dotenv').config();
 const bcrypt = require('bcrypt');
+const admin = require('firebase-admin');
 
 
 const app = express();
@@ -63,45 +64,67 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
 });
 
+const serviceAccount = require('./config/serviceKey.json');  
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+console.log('Firebase Admin SDK initialized');
 
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword } = req.body;
 
   const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
+  // Check if passwords match
   if (password !== confirmPassword) {
     return res.status(400).json({ success: false, message: 'Passwords do not match' });
   }
 
+  // Validate password format
   if (!passwordRegex.test(password)) {
     return res.status(400).json({
       success: false,
-      message:
-        'Password must have at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character.',
+      message: 'Password must have at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character.',
     });
   }
 
   try {
-    const connection = await pool.getConnection();
-    try {
-      const saltRounds = 10;
-      const hashedPassword = await bcrypt.hash(password, saltRounds);
+    // Create user in Firebase Authentication
+    const firebaseUser = await admin.auth().createUser({
+      email: email,
+      password: password,
+    });
 
-      const sql = 'INSERT INTO signup (email, password) VALUES (?, ?)';
-      await connection.query(sql, [email, hashedPassword]);
-      connection.release();
-      return res.json({ success: true, message: 'Registration successful' });
-    } catch (err) {
-      connection.release();
-      if (err.code === 'ER_DUP_ENTRY') {
-        return res.status(400).json({ success: false, message: 'Email already exists' });
-      }
-      console.error('Database error: ' + err.message);
-      return res.status(500).json({ success: false, message: 'Registration failed' });
-    }
+    // Hash the password to store it in your database
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    // Store the user in your database (MySQL)
+    const connection = await pool.getConnection();
+    const sql = 'INSERT INTO signup (email, password) VALUES (?, ?)';
+    await connection.query(sql, [email, hashedPassword]);
+    connection.release();
+
+    // Send success response
+    return res.json({ success: true, message: 'Registration successful' });
+
   } catch (error) {
-    console.error('Error: ' + error.message);
-    return res.status(500).json({ success: false, message: 'Registration failed' });
+    console.error('Error during signup process: ', error);
+
+    // Check if the error is related to Firebase user creation
+    if (error.code === 'auth/email-already-exists') {
+      return res.status(400).json({ success: false, message: 'Email already exists in Firebase' });
+    }
+
+    // Check if the error is related to MySQL user creation
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ success: false, message: 'Email already exists in the database' });
+    }
+
+    // Generic error handling
+    return res.status(500).json({ success: false, message: 'Registration failed', error: error.message });
   }
 });
 
