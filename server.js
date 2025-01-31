@@ -164,6 +164,9 @@ if (signupMethod === 'google' && token) {
 
 });
 
+
+
+
 app.delete('/delete-account', async (req, res) => {
   const { userId } = req.body;
 
