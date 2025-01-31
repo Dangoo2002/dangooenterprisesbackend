@@ -127,31 +127,38 @@ if (signupMethod === 'google' && token) {
     try {
       const connection = await pool.getConnection();
       try {
-        // Create Firebase user and get the UID
         const userRecord = await admin.auth().createUser({ email, password });
-        const uid = userRecord.uid; // Capture the UID from Firebase
-
-        // Hash the password
-        const saltRounds = 10;
-        const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-        // Insert user into the signup table with the UID and email
-        const sql = 'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)';
-        await connection.query(sql, [uid, email, hashedPassword]);
-
+        const uid = userRecord.uid;
+  
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await connection.query(
+          'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)',
+          [uid, email, hashedPassword]
+        );
+  
         connection.release();
         return res.json({ success: true, message: 'Registration successful' });
       } catch (err) {
         connection.release();
+        console.error('Database/Firebase error:', err); // Log detailed error
+  
         if (err.code === 'ER_DUP_ENTRY') {
           return res.status(400).json({ success: false, message: 'Email already exists' });
+        } else if (err.code === 'auth/email-already-exists') {
+          return res.status(400).json({ success: false, message: 'Email already exists in Firebase' });
         }
-        console.error('Database error:', err.message);
-        return res.status(500).json({ success: false, message: 'Registration failed' });
+  
+        return res.status(500).json({ 
+          success: false, 
+          message: 'Registration failed: ' + err.message 
+        });
       }
     } catch (error) {
-      console.error('Error creating Firebase user:', error.message);
-      return res.status(500).json({ success: false, message: 'Registration failed' });
+      console.error('General error:', error);
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Server error: ' + error.message 
+      });
     }
   }
 
