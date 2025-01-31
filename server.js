@@ -162,8 +162,6 @@ if (signupMethod === 'google' && token) {
     }
   }
 
-  // If no valid signup method is provided
-  return res.status(400).json({ success: false, message: 'Invalid signup method' });
 });
 
 app.delete('/delete-account', async (req, res) => {
