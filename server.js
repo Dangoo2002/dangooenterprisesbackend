@@ -255,52 +255,56 @@ app.get('/api/signup/total', async (req, res) => {
   }
 });
 
-
 app.post('/login', async (req, res) => {
   const { email, password, idToken, signupMethod } = req.body;
 
   try {
-    // Handle Google Login
+    const connection = await pool.getConnection();
+
     if (signupMethod === 'google') {
       if (!idToken) {
+        connection.release();
         return res.status(400).json({ success: false, message: 'Missing ID token' });
       }
 
-      // Verify Firebase ID token
       const decodedToken = await admin.auth().verifyIdToken(idToken);
-      const uid = decodedToken.uid;
+      const googleEmail = decodedToken.email;
 
-      // Check if user exists in the database
-      const connection = await pool.getConnection();
-      const [results] = await connection.query('SELECT * FROM signup WHERE user_id = ?', [uid]);
-      connection.release();
+      // Check if user exists in database
+      const [results] = await connection.query('SELECT id, email FROM signup WHERE email = ?', [googleEmail]);
 
-      if (results.length > 0) {
-        return res.json({
-          success: true,
-          user: { id: results[0].id, email: results[0].email }
-        });
-      } else {
+      if (results.length === 0) {
+        connection.release();
         return res.status(401).json({ success: false, message: 'User not found' });
       }
+
+      const user = results[0];
+      connection.release();
+
+      return res.json({
+        success: true,
+        user: { user_id: user.id, email: user.email },
+      });
     }
 
-    // Handle Email/Password Login (existing logic)
-    const connection = await pool.getConnection();
-    const [results] = await connection.query('SELECT * FROM signup WHERE email = ?', [email]);
+    // Handle Email/Password Login
+    const [results] = await connection.query('SELECT id, email, password FROM signup WHERE email = ?', [email]);
+
+    if (results.length === 0) {
+      connection.release();
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
+
+    const user = results[0];
+    const passwordMatch = await bcrypt.compare(password, user.password);
+
     connection.release();
 
-    if (results.length > 0) {
-      const user = results[0];
-      const passwordMatch = await bcrypt.compare(password, user.password);
-      if (passwordMatch) {
-        return res.json({
-          success: true,
-          user: { id: user.id, email: user.email }
-        });
-      } else {
-        return res.status(401).json({ success: false, message: 'Invalid email or password' });
-      }
+    if (passwordMatch) {
+      return res.json({
+        success: true,
+        user: { user_id: user.id, email: user.email },
+      });
     } else {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
@@ -309,8 +313,6 @@ app.post('/login', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Login failed' });
   }
 });
-
-
 
 app.post('/loginadmin', async (req, res) => {
   const { email, password } = req.body;
