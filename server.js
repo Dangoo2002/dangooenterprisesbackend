@@ -285,9 +285,9 @@ app.post('/login', async (req, res) => {
       const decodedToken = await admin.auth().verifyIdToken(idToken);
       const uid = decodedToken.uid;
 
-      // Check if user exists in the database
+      // Fix: Use firebase_uid instead of user_id
       const connection = await pool.getConnection();
-      const [results] = await connection.query('SELECT * FROM signup WHERE user_id = ?', [uid]);
+      const [results] = await connection.query('SELECT * FROM signup WHERE firebase_uid = ?', [uid]);
       connection.release();
 
       if (results.length > 0) {
@@ -300,7 +300,7 @@ app.post('/login', async (req, res) => {
       }
     }
 
-    // Handle Email/Password Login (existing logic)
+    // Handle Email/Password Login
     const connection = await pool.getConnection();
     const [results] = await connection.query('SELECT * FROM signup WHERE email = ?', [email]);
     connection.release();
@@ -324,6 +324,7 @@ app.post('/login', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Login failed' });
   }
 });
+
 
 
 
