@@ -398,49 +398,39 @@ app.post('/check-user', async (req, res) => {
 });
 
 app.post('/cart/add', async (req, res) => {
+  const { user_id, item_id, quantity, total_price } = req.body;
+
+  console.log('Incoming request to add to cart:', { user_id, item_id, quantity, total_price });
+
+  if (!user_id || !item_id || !quantity || total_price == null) {  
+    console.error('Missing required fields:', { user_id, item_id, quantity, total_price });
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
+  }
+
   try {
-    const { user_id, item_id, quantity, total_price } = req.body;
-
-    console.log('Incoming request:', { user_id, item_id, quantity, total_price });
-
-    if (!user_id || !item_id || !quantity || total_price == null) {
-      console.error('Missing required fields:', { user_id, item_id, quantity, total_price });
-      return res.status(400).json({ success: false, message: 'Missing required fields' });
-    }
-
     const connection = await pool.getConnection();
     
-    // Retrieve the correct increment `id` from the `signup` table using `user_id`
-    const [userResult] = await connection.query(
-      'SELECT id FROM signup WHERE user_id = ?',
-      [user_id]
-    );
+    const [productResults] = await connection.query(`
+      SELECT p.title, p.description, p.price, pi.image 
+      FROM products p 
+      LEFT JOIN product_images pi ON p.id = pi.product_id 
+      WHERE p.id = ?
+    `, [item_id]);
 
-    if (userResult.length === 0) {
-      connection.release();
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    const actualUserId = userResult[0].id; // Get the correct increment ID
-    console.log('Resolved user_id:', actualUserId);
-
-    // Fetch product details
-    const [productResults] = await connection.query(
-      `SELECT p.title, p.description, p.price, pi.image 
-       FROM products p 
-       LEFT JOIN product_images pi ON p.id = pi.product_id 
-       WHERE p.id = ?`,
-      [item_id]
-    );
+    console.log('Product results:', productResults);
 
     if (productResults.length === 0) {
       connection.release();
+      console.error('Product not found for item_id:', item_id);
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
     const product = productResults[0];
 
-    // Insert or update the cart with the correct `id`
+    if (!product.image) {
+      console.error('No image found for product:', product);
+    }
+
     const sql = `
       INSERT INTO cart (user_id, item_id, title, description, price, quantity, image, total_price)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -449,26 +439,38 @@ app.post('/cart/add', async (req, res) => {
         total_price = ?;  
     `;
 
-    console.log('Executing SQL with user_id:', actualUserId);
-    await connection.query(sql, [
-      actualUserId, // Use the correct incremental ID
+    console.log('Executing SQL:', sql);
+    console.log('With parameters:', [
+      user_id,
       item_id,
       product.title,
       product.description,
       product.price,
       quantity,
-      product.image || null,
-      total_price,
+      product.image || null, 
+      total_price, 
       quantity,
       total_price
     ]);
 
-    connection.release();
-    console.log('Item added to cart successfully:', { actualUserId, item_id });
-    return res.json({ success: true, message: 'Item added to cart' });
+    await connection.query(sql, [
+      user_id,
+      item_id,
+      product.title,
+      product.description,
+      product.price,
+      quantity,
+      product.image || null, 
+      total_price, 
+      quantity, 
+      total_price
+    ]);
 
+    connection.release();
+    console.log('Item added to cart successfully:', { user_id, item_id });
+    return res.json({ success: true, message: 'Item added to cart' });
   } catch (error) {
-    console.error('Error:', error.message);
+    console.error('Database error occurred:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to add item to cart' });
   }
 });
