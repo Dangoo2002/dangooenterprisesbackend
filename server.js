@@ -530,7 +530,7 @@ app.delete('/cart/:firebaseUid/:product_id', async (req, res) => {
       SELECT c.id AS cart_id 
       FROM cart c
       JOIN products p ON c.item_id = p.id
-      WHERE c.user_id = (SELECT id FROM signup WHERE user_id = ?) AND p.id = ?
+      WHERE c.user_id = (SELECT id FROM signup WHERE user_id = ? LIMIT 1) AND p.id = ?
       `,
       [firebaseUid, product_id]
     );
@@ -546,7 +546,7 @@ app.delete('/cart/:firebaseUid/:product_id', async (req, res) => {
     // Execute the DELETE query to remove the item from the cart
     const [deleteResult] = await connection.query(
       `
-      DELETE FROM cart WHERE user_id = (SELECT id FROM signup WHERE user_id = ?) AND id = ?
+      DELETE FROM cart WHERE user_id = (SELECT id FROM signup WHERE user_id = ? LIMIT 1) AND id = ?
       `,
       [firebaseUid, cartId]
     );
