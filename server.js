@@ -576,38 +576,42 @@ app.post('/api/orders', async (req, res) => {
   const { product_id, quantity, total_price, phone, location, email, user_id, name, title } = req.body;
   console.log('Received order data:', req.body);
 
-  // Validate the required fields
+  // Validate required fields
   if (!product_id || !quantity || !total_price || !phone || !location || !name || !title) {
     console.log('Missing or invalid fields');
     return res.status(400).json({ success: false, message: 'Missing or invalid fields' });
   }
 
   try {
-    // Check if user_id is provided, and if so, validate it by checking the signup table
-    if (user_id) {
-      const connection = await pool.getConnection();
-      
-      // Query the signup table to check if the user_id exists (use id from the signup table)
-      const [userRows] = await connection.query('SELECT * FROM signup WHERE id = ?', [user_id]);
-      
-      if (userRows.length === 0) {
-        console.log('User not authenticated');
-        connection.release();
+    let verifiedUserId = user_id;
+
+    // If user_id is Firebase UID, convert it to numeric ID
+    if (user_id && isNaN(user_id)) {
+      verifiedUserId = await getUserIdFromFirebaseUID(user_id);
+      if (!verifiedUserId) {
+        console.log('User not authenticated - Firebase UID not found');
         return res.status(401).json({ success: false, message: 'User not authenticated' });
       }
-
-      connection.release();
     }
 
-    // Proceed with inserting the order into the orders table
+    // Insert order into database
     const connection = await pool.getConnection();
     const sql = `
       INSERT INTO orders (user_id, product_id, quantity, total_price, phone, location, order_date, email, name, title)
       VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)
     `;
     
-    // Insert order with user_id (which is still from the signup table) or null if not authenticated
-    const [result] = await connection.query(sql, [user_id || null, product_id, quantity, total_price, phone, location, email, name, title]);
+    const [result] = await connection.query(sql, [
+      verifiedUserId || null,
+      product_id,
+      quantity,
+      total_price,
+      phone,
+      location,
+      email,
+      name,
+      title
+    ]);
     connection.release();
 
     console.log('Order placed successfully, Order ID:', result.insertId);
