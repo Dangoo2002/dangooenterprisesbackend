@@ -81,38 +81,35 @@ const upload = multer({
 // Sign-up endpoint
 app.post('/signup', async (req, res) => {
   const { email, password, confirmPassword, token, signupMethod, uid } = req.body;
-
-  // Handle Google Sign-Up
-  // Backend: /signup endpoint (Google signup logic)
-if (signupMethod === 'google' && token) {
-  try {
-    const decodedToken = await admin.auth().verifyIdToken(token);
-    const { uid: firebaseUid, email: firebaseEmail } = decodedToken;
-
-    const connection = await pool.getConnection();
-    const [existingUser] = await connection.query(
-      'SELECT * FROM signup WHERE user_id = ?', 
-      [firebaseUid]
-    );
-
-    if (existingUser.length > 0) {
+  if (signupMethod === 'google' && token) {
+    try {
+      const decodedToken = await admin.auth().verifyIdToken(token);
+      const { uid: firebaseUid, email: firebaseEmail } = decodedToken;
+  
+      const connection = await pool.getConnection();
+      const [existingUser] = await connection.query(
+        'SELECT * FROM signup WHERE firebase_uid = ?',  // Use firebase_uid here
+        [firebaseUid]
+      );
+  
+      if (existingUser.length > 0) {
+        connection.release();
+        return res.status(400).json({ success: false, message: 'User already exists' });
+      }
+  
+      await connection.query(
+        'INSERT INTO signup (firebase_uid, email) VALUES (?, ?)', // Use firebase_uid here too
+        [firebaseUid, firebaseEmail]
+      );
+  
       connection.release();
-      return res.status(400).json({ success: false, message: 'User already exists' });
+      return res.json({ success: true, message: 'User registered successfully' });
+    } catch (error) {
+      console.error('Google signup error:', error);
+      return res.status(500).json({ success: false, message: 'Google signup failed' });
     }
-
-    // Fix: Remove the password column from the INSERT query
-    await connection.query(
-      'INSERT INTO signup (user_id, email) VALUES (?, ?)', 
-      [firebaseUid, firebaseEmail] // No password
-    );
-
-    connection.release();
-    return res.json({ success: true, message: 'User registered successfully' });
-  } catch (error) {
-    console.error('Google signup error:', error);
-    return res.status(500).json({ success: false, message: 'Google signup failed' });
   }
-}
+  
   if (signupMethod === 'email') {
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
     if (password !== confirmPassword) {
