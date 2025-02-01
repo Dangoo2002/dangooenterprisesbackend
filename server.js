@@ -511,21 +511,27 @@ app.get('/cart/:userId', async (req, res) => {
 });
 
 
-
-// DELETE /cart/:user_id/:product_id
 app.delete('/cart/:user_id/:product_id', async (req, res) => {
   const { user_id, product_id } = req.params;
 
   console.log('Received DELETE request with:', { user_id, product_id });
 
+  // Validate user_id and product_id
   if (!user_id || !product_id) {
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
+  // Parse user_id and product_id to ensure they are numbers
+  const userId = parseInt(user_id, 10);
+  const productId = parseInt(product_id, 10);
+
+  // Check if the parsed values are valid numbers
+  if (isNaN(userId) || isNaN(productId)) {
+    return res.status(400).json({ success: false, message: 'Invalid user_id or product_id' });
+  }
+
   try {
     const connection = await pool.getConnection();
-    const userId = parseInt(user_id, 10);
-    const productId = parseInt(product_id, 10);
 
     // Fetch the cart item associated with the product_id
     const [cartItem] = await connection.query(
@@ -568,6 +574,7 @@ app.delete('/cart/:user_id/:product_id', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to remove item from cart' });
   }
 });
+
 
 
 
