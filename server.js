@@ -387,20 +387,20 @@ app.post('/check-user', async (req, res) => {
 app.post('/cart/add', async (req, res) => {
   try {
     const { user_id, item_id, quantity, total_price } = req.body;
-
     console.log('Incoming request to add to cart:', { user_id, item_id, quantity, total_price });
 
-    if (!user_id || !item_id || !quantity || total_price == null) {  
+    // Check if all required fields are provided
+    if (!user_id || !item_id || !quantity || total_price == null) {
       console.error('Missing required fields:', { user_id, item_id, quantity, total_price });
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
     const connection = await pool.getConnection();
-    
-    // Ensure `user_id` is always the auto-incremented `id`
+
+    // Ensure the user_id is valid by checking it in the signup table
     const [userResult] = await connection.query(
-      'SELECT id FROM signup WHERE id = ?', 
-      [user_id] // Now expecting the correct `id`
+      'SELECT id FROM signup WHERE id = ?',
+      [user_id] // Expecting the correct id
     );
 
     if (userResult.length === 0) {
@@ -412,12 +412,13 @@ app.post('/cart/add', async (req, res) => {
     console.log('Verified user_id:', user_id);
 
     // Fetch product details
-    const [productResults] = await connection.query(`
-      SELECT p.title, p.description, p.price, pi.image 
-      FROM products p 
-      LEFT JOIN product_images pi ON p.id = pi.product_id 
-      WHERE p.id = ?
-    `, [item_id]);
+    const [productResults] = await connection.query(
+      `SELECT p.title, p.description, p.price, pi.image
+      FROM products p
+      LEFT JOIN product_images pi ON p.id = pi.product_id
+      WHERE p.id = ?`, 
+      [item_id]
+    );
 
     if (productResults.length === 0) {
       connection.release();
@@ -431,13 +432,13 @@ app.post('/cart/add', async (req, res) => {
     const sql = `
       INSERT INTO cart (user_id, item_id, title, description, price, quantity, image, total_price)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE 
-        quantity = quantity + ?, 
+      ON DUPLICATE KEY UPDATE
+        quantity = quantity + ?,
         total_price = ?;
     `;
-
+    
     await connection.query(sql, [
-      user_id,  // Using correct auto-incremented ID
+      user_id, // Correct user_id
       item_id,
       product.title,
       product.description,
@@ -448,16 +449,16 @@ app.post('/cart/add', async (req, res) => {
       quantity,
       total_price
     ]);
-
+    
     connection.release();
     console.log('Item added to cart successfully:', { user_id, item_id });
     return res.json({ success: true, message: 'Item added to cart' });
+    
   } catch (error) {
     console.error('Error:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to add item to cart' });
   }
 });
-
 
 
 app.get('/cart/:userId', async (req, res) => {
