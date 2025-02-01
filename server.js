@@ -511,31 +511,28 @@ app.get('/cart/:userId', async (req, res) => {
 });
 
 
+app.delete('/cart/:firebaseUid/:product_id', async (req, res) => {
+  const { firebaseUid, product_id } = req.params;
 
-// DELETE /cart/:user_id/:product_id
-app.delete('/cart/:user_id/:product_id', async (req, res) => {
-  const { user_id, product_id } = req.params;
+  console.log('Received DELETE request with:', { firebaseUid, product_id });
 
-  console.log('Received DELETE request with:', { user_id, product_id });
-
-  if (!user_id || !product_id) {
-    return res.status(400).json({ success: false, message: 'Missing required fields' });
+  // Validate that firebaseUid and product_id are valid
+  if (!firebaseUid || isNaN(parseInt(product_id, 10))) {
+    return res.status(400).json({ success: false, message: 'Invalid firebaseUid or product_id' });
   }
 
   try {
     const connection = await pool.getConnection();
-    const userId = parseInt(user_id, 10);
-    const productId = parseInt(product_id, 10);
 
-    // Fetch the cart item associated with the product_id
+    // Fetch the cart item associated with the product_id and firebaseUid
     const [cartItem] = await connection.query(
       `
       SELECT c.id AS cart_id 
       FROM cart c
       JOIN products p ON c.item_id = p.id
-      WHERE c.user_id = ? AND p.id = ?
+      WHERE c.user_id = (SELECT id FROM signup WHERE user_id = ?) AND p.id = ?
       `,
-      [userId, productId]
+      [firebaseUid, product_id]
     );
 
     // Check if the item exists in the cart
@@ -549,9 +546,9 @@ app.delete('/cart/:user_id/:product_id', async (req, res) => {
     // Execute the DELETE query to remove the item from the cart
     const [deleteResult] = await connection.query(
       `
-      DELETE FROM cart WHERE user_id = ? AND id = ?
+      DELETE FROM cart WHERE user_id = (SELECT id FROM signup WHERE user_id = ?) AND id = ?
       `,
-      [userId, cartId]
+      [firebaseUid, cartId]
     );
 
     connection.release();
@@ -560,14 +557,15 @@ app.delete('/cart/:user_id/:product_id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Item could not be deleted' });
     }
 
-    console.log('Item deleted successfully:', { userId, productId });
+    console.log('Item deleted successfully:', { firebaseUid, product_id });
 
-    return res.json({ success: true, message: 'Item removed from cart', productId });
+    return res.json({ success: true, message: 'Item removed from cart', productId: product_id });
   } catch (error) {
     console.error('Database error:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to remove item from cart' });
   }
 });
+
 
 
 
