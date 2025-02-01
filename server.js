@@ -516,24 +516,21 @@ app.delete('/cart/:user_id/:product_id', async (req, res) => {
 
   console.log('Received DELETE request with:', { user_id, product_id });
 
-  // Validate user_id and product_id
+  // Validate user_id (string) and product_id (integer)
   if (!user_id || !product_id) {
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
-  // Parse user_id and product_id to ensure they are numbers
-  const userId = parseInt(user_id, 10);
+  // Validate if product_id is a number
   const productId = parseInt(product_id, 10);
-
-  // Check if the parsed values are valid numbers
-  if (isNaN(userId) || isNaN(productId)) {
-    return res.status(400).json({ success: false, message: 'Invalid user_id or product_id' });
+  if (isNaN(productId)) {
+    return res.status(400).json({ success: false, message: 'Invalid product_id' });
   }
 
   try {
     const connection = await pool.getConnection();
 
-    // Fetch the cart item associated with the product_id
+    // Fetch the cart item associated with the product_id and user_id
     const [cartItem] = await connection.query(
       `
       SELECT c.id AS cart_id 
@@ -541,7 +538,7 @@ app.delete('/cart/:user_id/:product_id', async (req, res) => {
       JOIN products p ON c.item_id = p.id
       WHERE c.user_id = ? AND p.id = ?
       `,
-      [userId, productId]
+      [user_id, productId]  // user_id stays as string, product_id is now a number
     );
 
     // Check if the item exists in the cart
@@ -557,7 +554,7 @@ app.delete('/cart/:user_id/:product_id', async (req, res) => {
       `
       DELETE FROM cart WHERE user_id = ? AND id = ?
       `,
-      [userId, cartId]
+      [user_id, cartId]
     );
 
     connection.release();
@@ -566,7 +563,7 @@ app.delete('/cart/:user_id/:product_id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Item could not be deleted' });
     }
 
-    console.log('Item deleted successfully:', { userId, productId });
+    console.log('Item deleted successfully:', { user_id, product_id });
 
     return res.json({ success: true, message: 'Item removed from cart', productId });
   } catch (error) {
@@ -574,6 +571,7 @@ app.delete('/cart/:user_id/:product_id', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to remove item from cart' });
   }
 });
+
 
 
 
