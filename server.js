@@ -77,44 +77,42 @@ const upload = multer({
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
 });
+
 // Sign-up endpoint
 app.post('/signup', async (req, res) => {
-  const { email, password, confirmPassword, token, signupMethod } = req.body;
+  const { email, password, confirmPassword, token, signupMethod, uid } = req.body;
 
-  if (signupMethod === 'google' && token) {
-    try {
-      const decodedToken = await admin.auth().verifyIdToken(token);
-      const { uid: firebaseUid, email: firebaseEmail } = decodedToken;
+  // Handle Google Sign-Up
+  // Backend: /signup endpoint (Google signup logic)
+if (signupMethod === 'google' && token) {
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    const { uid: firebaseUid, email: firebaseEmail } = decodedToken;
 
-      const connection = await pool.getConnection();
+    const connection = await pool.getConnection();
+    const [existingUser] = await connection.query(
+      'SELECT * FROM signup WHERE user_id = ?', 
+      [firebaseUid]
+    );
 
-      // Check if user exists
-      const [existingUser] = await connection.query(
-        'SELECT id FROM signup WHERE firebase_uid = ?', 
-        [firebaseUid]
-      );
-
-      if (existingUser.length > 0) {
-        connection.release();
-        return res.status(400).json({ success: false, message: 'User already exists' });
-      }
-
-      // Insert new user (store Firebase UID but use auto-incremented `id`)
-      const result = await connection.query(
-        'INSERT INTO signup (firebase_uid, email) VALUES (?, ?)', 
-        [firebaseUid, firebaseEmail]
-      );
-
-      const userId = result[0].insertId; // Get the new user's `id`
+    if (existingUser.length > 0) {
       connection.release();
-
-      return res.json({ success: true, message: 'User registered successfully', user_id: userId });
-    } catch (error) {
-      console.error('Google signup error:', error);
-      return res.status(500).json({ success: false, message: 'Google signup failed' });
+      return res.status(400).json({ success: false, message: 'User already exists' });
     }
-  }
 
+    // Fix: Remove the password column from the INSERT query
+    await connection.query(
+      'INSERT INTO signup (user_id, email) VALUES (?, ?)', 
+      [firebaseUid, firebaseEmail] // No password
+    );
+
+    connection.release();
+    return res.json({ success: true, message: 'User registered successfully' });
+  } catch (error) {
+    console.error('Google signup error:', error);
+    return res.status(500).json({ success: false, message: 'Google signup failed' });
+  }
+}
   if (signupMethod === 'email') {
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
     if (password !== confirmPassword) {
@@ -126,28 +124,45 @@ app.post('/signup', async (req, res) => {
         message: 'Password must have at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character.',
       });
     }
-
     try {
       const connection = await pool.getConnection();
-      const hashedPassword = await bcrypt.hash(password, 10);
-
-      // Insert user into `signup` table
-      const result = await connection.query(
-        'INSERT INTO signup (email, password) VALUES (?, ?)',
-        [email, hashedPassword]
-      );
-
-      const userId = result[0].insertId; // Get the new user's `id`
-      connection.release();
-
-      return res.json({ success: true, message: 'Registration successful', user_id: userId });
+      try {
+        const userRecord = await admin.auth().createUser({ email, password });
+        const uid = userRecord.uid;
+  
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await connection.query(
+          'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)',
+          [uid, email, hashedPassword]
+        );
+  
+        connection.release();
+        return res.json({ success: true, message: 'Registration successful' });
+      } catch (err) {
+        connection.release();
+        console.error('Database/Firebase error:', err); // Log detailed error
+  
+        if (err.code === 'ER_DUP_ENTRY') {
+          return res.status(400).json({ success: false, message: 'Email already exists' });
+        } else if (err.code === 'auth/email-already-exists') {
+          return res.status(400).json({ success: false, message: 'Email already exists in Firebase' });
+        }
+  
+        return res.status(500).json({ 
+          success: false, 
+          message: 'Registration failed: ' + err.message 
+        });
+      }
     } catch (error) {
-      console.error('Error:', error);
-      return res.status(500).json({ success: false, message: 'Server error' });
+      console.error('General error:', error);
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Server error: ' + error.message 
+      });
     }
   }
-});
 
+});
 
 
 
@@ -255,56 +270,52 @@ app.get('/api/signup/total', async (req, res) => {
   }
 });
 
+
 app.post('/login', async (req, res) => {
   const { email, password, idToken, signupMethod } = req.body;
 
   try {
-    const connection = await pool.getConnection();
-
+    // Handle Google Login
     if (signupMethod === 'google') {
       if (!idToken) {
-        connection.release();
         return res.status(400).json({ success: false, message: 'Missing ID token' });
       }
 
+      // Verify Firebase ID token
       const decodedToken = await admin.auth().verifyIdToken(idToken);
-      const googleEmail = decodedToken.email;
+      const uid = decodedToken.uid;
 
-      // Check if user exists in database
-      const [results] = await connection.query('SELECT id, email FROM signup WHERE email = ?', [googleEmail]);
+      // Check if user exists in the database
+      const connection = await pool.getConnection();
+      const [results] = await connection.query('SELECT * FROM signup WHERE user_id = ?', [uid]);
+      connection.release();
 
-      if (results.length === 0) {
-        connection.release();
+      if (results.length > 0) {
+        return res.json({
+          success: true,
+          user: { id: results[0].id, email: results[0].email }
+        });
+      } else {
         return res.status(401).json({ success: false, message: 'User not found' });
       }
-
-      const user = results[0];
-      connection.release();
-
-      return res.json({
-        success: true,
-        user: { user_id: user.id, email: user.email },
-      });
     }
 
-    // Handle Email/Password Login
-    const [results] = await connection.query('SELECT id, email, password FROM signup WHERE email = ?', [email]);
-
-    if (results.length === 0) {
-      connection.release();
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
-    }
-
-    const user = results[0];
-    const passwordMatch = await bcrypt.compare(password, user.password);
-
+    // Handle Email/Password Login (existing logic)
+    const connection = await pool.getConnection();
+    const [results] = await connection.query('SELECT * FROM signup WHERE email = ?', [email]);
     connection.release();
 
-    if (passwordMatch) {
-      return res.json({
-        success: true,
-        user: { user_id: user.id, email: user.email },
-      });
+    if (results.length > 0) {
+      const user = results[0];
+      const passwordMatch = await bcrypt.compare(password, user.password);
+      if (passwordMatch) {
+        return res.json({
+          success: true,
+          user: { id: user.id, email: user.email }
+        });
+      } else {
+        return res.status(401).json({ success: false, message: 'Invalid email or password' });
+      }
     } else {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
@@ -313,6 +324,8 @@ app.post('/login', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Login failed' });
   }
 });
+
+
 
 app.post('/loginadmin', async (req, res) => {
   const { email, password } = req.body;
@@ -385,40 +398,26 @@ app.post('/check-user', async (req, res) => {
 });
 
 app.post('/cart/add', async (req, res) => {
+  const { user_id, item_id, quantity, total_price } = req.body;
+
+  console.log('Incoming request to add to cart:', { user_id, item_id, quantity, total_price });
+
+  if (!user_id || !item_id || !quantity || total_price == null) {  
+    console.error('Missing required fields:', { user_id, item_id, quantity, total_price });
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
+  }
+
   try {
-    const { user_id, item_id, quantity, total_price } = req.body;
-    console.log('Incoming request to add to cart:', { user_id, item_id, quantity, total_price });
-
-    // Check if all required fields are provided
-    if (!user_id || !item_id || !quantity || total_price == null) {
-      console.error('Missing required fields:', { user_id, item_id, quantity, total_price });
-      return res.status(400).json({ success: false, message: 'Missing required fields' });
-    }
-
     const connection = await pool.getConnection();
+    
+    const [productResults] = await connection.query(`
+      SELECT p.title, p.description, p.price, pi.image 
+      FROM products p 
+      LEFT JOIN product_images pi ON p.id = pi.product_id 
+      WHERE p.id = ?
+    `, [item_id]);
 
-    // Ensure the user_id is valid by checking it in the signup table
-    const [userResult] = await connection.query(
-      'SELECT id FROM signup WHERE id = ?',
-      [user_id]
-    );
-
-    if (userResult.length === 0) {
-      connection.release();
-      console.error('User not found with id:', user_id);
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    console.log('Verified user_id:', user_id);
-
-    // Fetch product details
-    const [productResults] = await connection.query(
-      `SELECT p.title, p.description, p.price, pi.image
-      FROM products p
-      LEFT JOIN product_images pi ON p.id = pi.product_id
-      WHERE p.id = ?`, 
-      [item_id]
-    );
+    console.log('Product results:', productResults);
 
     if (productResults.length === 0) {
       connection.release();
@@ -428,15 +427,32 @@ app.post('/cart/add', async (req, res) => {
 
     const product = productResults[0];
 
-    // Insert or update cart
+    if (!product.image) {
+      console.error('No image found for product:', product);
+    }
+
     const sql = `
       INSERT INTO cart (user_id, item_id, title, description, price, quantity, image, total_price)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        quantity = quantity + ?,
-        total_price = ?;
+      ON DUPLICATE KEY UPDATE 
+        quantity = quantity + ?, 
+        total_price = ?;  
     `;
-    
+
+    console.log('Executing SQL:', sql);
+    console.log('With parameters:', [
+      user_id,
+      item_id,
+      product.title,
+      product.description,
+      product.price,
+      quantity,
+      product.image || null, 
+      total_price, 
+      quantity,
+      total_price
+    ]);
+
     await connection.query(sql, [
       user_id,
       item_id,
@@ -444,21 +460,23 @@ app.post('/cart/add', async (req, res) => {
       product.description,
       product.price,
       quantity,
-      product.image || null,
-      total_price,
-      quantity,
+      product.image || null, 
+      total_price, 
+      quantity, 
       total_price
     ]);
-    
+
     connection.release();
     console.log('Item added to cart successfully:', { user_id, item_id });
     return res.json({ success: true, message: 'Item added to cart' });
-    
   } catch (error) {
-    console.error('Error:', error.message);
+    console.error('Database error occurred:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to add item to cart' });
   }
 });
+
+
+
 
 app.get('/cart/:userId', async (req, res) => {
   const userId = req.params.userId;
