@@ -397,23 +397,19 @@ app.post('/check-user', async (req, res) => {
   }
 });
 
-// cart/add endpoint
-app.post('/cart/add', authenticateFirebase, async (req, res) => {
-  const { item_id, quantity, total_price } = req.body;
-  const dbUserId = req.user.db_id;
+app.post('/cart/add', async (req, res) => {
+  const { user_id, item_id, quantity, total_price } = req.body;
 
-  if (!item_id || !quantity || total_price == null) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Missing required fields: item_id, quantity, or total_price' 
-    });
+  console.log('Incoming request to add to cart:', { user_id, item_id, quantity, total_price });
+
+  if (!user_id || !item_id || !quantity || total_price == null) {  
+    console.error('Missing required fields:', { user_id, item_id, quantity, total_price });
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
-  let connection;
   try {
-    connection = await pool.getConnection();
-
-    // 1. Verify product exists
+    const connection = await pool.getConnection();
+    
     const [productResults] = await connection.query(`
       SELECT p.title, p.description, p.price, pi.image 
       FROM products p 
@@ -421,113 +417,66 @@ app.post('/cart/add', authenticateFirebase, async (req, res) => {
       WHERE p.id = ?
     `, [item_id]);
 
+    console.log('Product results:', productResults);
+
     if (productResults.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Product not found' 
-      });
+      connection.release();
+      console.error('Product not found for item_id:', item_id);
+      return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
     const product = productResults[0];
 
-    // 2. Insert/update cart
+    if (!product.image) {
+      console.error('No image found for product:', product);
+    }
+
     const sql = `
       INSERT INTO cart (user_id, item_id, title, description, price, quantity, image, total_price)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE 
         quantity = quantity + ?, 
-        total_price = total_price + ?;
+        total_price = ?;  
     `;
 
-    await connection.query(sql, [
-      dbUserId,          // From middleware
+    console.log('Executing SQL:', sql);
+    console.log('With parameters:', [
+      user_id,
       item_id,
       product.title,
       product.description,
       product.price,
       quantity,
-      product.image || null,
-      total_price,
-      quantity,         // For duplicate update
-      total_price       // For duplicate update
+      product.image || null, 
+      total_price, 
+      quantity,
+      total_price
     ]);
 
-    // 3. Get updated cart count
-    const [cartCount] = await connection.query(
-      'SELECT COUNT(*) AS count FROM cart WHERE user_id = ?',
-      [dbUserId]
-    );
+    await connection.query(sql, [
+      user_id,
+      item_id,
+      product.title,
+      product.description,
+      product.price,
+      quantity,
+      product.image || null, 
+      total_price, 
+      quantity, 
+      total_price
+    ]);
 
     connection.release();
-
-    return res.json({ 
-      success: true,
-      message: 'Item added to cart',
-      cartCount: cartCount[0].count
-    });
-
+    console.log('Item added to cart successfully:', { user_id, item_id });
+    return res.json({ success: true, message: 'Item added to cart' });
   } catch (error) {
-    if (connection) connection.release();
-    console.error('Database error:', error);
-
-    const errorResponse = {
-      success: false,
-      message: 'Failed to update cart'
-    };
-
-    if (error.code === 'ER_NO_REFERENCED_ROW_2') {
-      errorResponse.message = 'Invalid product or user reference';
-    }
-
-    return res.status(500).json(errorResponse);
+    console.error('Database error occurred:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to add item to cart' });
   }
 });
 
-export const authenticateFirebase = async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ success: false, message: 'Unauthorized - Missing token' });
-  }
 
-  const idToken = authHeader.split('Bearer ')[1];
 
-  try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    const connection = await pool.getConnection();
-    
-    // Get database user ID from signup table
-    const [userResults] = await connection.query(
-      'SELECT id FROM signup WHERE user_id = ?',
-      [decodedToken.uid]
-    );
-
-    connection.release();
-
-    if (userResults.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'User not found in database' 
-      });
-    }
-
-    // Attach both IDs to the request
-    req.user = {
-      firebase_uid: decodedToken.uid,
-      db_id: userResults[0].id
-    };
-
-    next();
-  } catch (error) {
-    console.error('Authentication error:', error);
-    return res.status(401).json({ 
-      success: false, 
-      message: error.code === 'auth/id-token-expired' 
-        ? 'Token expired - Please reauthenticate' 
-        : 'Invalid authentication token'
-    });
-  }
-};
 
 app.get('/cart/:userId', async (req, res) => {
   const userId = req.params.userId;
