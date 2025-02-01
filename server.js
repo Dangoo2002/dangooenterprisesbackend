@@ -400,7 +400,7 @@ app.post('/cart/add', async (req, res) => {
     // Ensure the user_id is valid by checking it in the signup table
     const [userResult] = await connection.query(
       'SELECT id FROM signup WHERE id = ?',
-      [user_id] // Expecting the correct id
+      [user_id]
     );
 
     if (userResult.length === 0) {
@@ -438,7 +438,7 @@ app.post('/cart/add', async (req, res) => {
     `;
     
     await connection.query(sql, [
-      user_id, // Correct user_id
+      user_id,
       item_id,
       product.title,
       product.description,
@@ -459,7 +459,6 @@ app.post('/cart/add', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to add item to cart' });
   }
 });
-
 
 app.get('/cart/:userId', async (req, res) => {
   const userId = req.params.userId;
