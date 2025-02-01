@@ -572,6 +572,15 @@ app.delete('/cart/:user_id/:product_id', async (req, res) => {
 
 
 
+// Function to get numeric user ID from Firebase UID
+const getUserIdFromFirebaseUID = async (firebaseUID) => {
+  const connection = await pool.getConnection();
+  const [rows] = await connection.query('SELECT id FROM signup WHERE firebase_uid = ?', [firebaseUID]);
+  connection.release();
+  return rows.length ? rows[0].id : null;
+};
+
+// API Endpoint to place an order
 app.post('/api/orders', async (req, res) => {
   const { product_id, quantity, total_price, phone, location, email, user_id, name, title } = req.body;
   console.log('Received order data:', req.body);
@@ -585,7 +594,7 @@ app.post('/api/orders', async (req, res) => {
   try {
     let verifiedUserId = user_id;
 
-    // If user_id is Firebase UID, convert it to numeric ID
+    // If user_id is a Firebase UID (string), convert it to a numeric ID
     if (user_id && isNaN(user_id)) {
       verifiedUserId = await getUserIdFromFirebaseUID(user_id);
       if (!verifiedUserId) {
@@ -621,6 +630,7 @@ app.post('/api/orders', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to place order' });
   }
 });
+
 
 
 app.get('/api/orders', async (req, res) => {
