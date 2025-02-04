@@ -112,7 +112,7 @@ app.post('/signup', async (req, res) => {
 
       // Send welcome email
       const subject = "Welcome to Dangoo Enterprise!";
-      const text = `Hey ${extractedFirstName}, welcome to Dangoo Enterprise! We're excited to have you.`;
+      const text = `Hello ${extractedFirstName}, welcome to Dangoo Enterprise! We're excited to have you.`;
       await sendEmail(firebaseEmail, subject, text);
 
       return res.json({ success: true, message: 'User registered successfully, email sent!' });
@@ -150,7 +150,7 @@ app.post('/signup', async (req, res) => {
 
         // Send welcome email
         const subject = "Welcome to Dangoo Enterprise!";
-        const text = `Hey ${extractedFirstName}, welcome to Dangoo Enterprise! We're excited to have you.`;
+        const text = `Hello ${extractedFirstName}, welcome to Dangoo Enterprise! We're excited to have you.`;
         await sendEmail(email, subject, text);
 
         return res.json({ success: true, message: 'Registration successful, email sent!' });
