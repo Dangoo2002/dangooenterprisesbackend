@@ -1,18 +1,23 @@
+require("dotenv").config();
 const { google } = require("googleapis");
 
 const oauth2Client = new google.auth.OAuth2(
-  "234922297762-unl9r2oso32d1fhlotbe4e8s7nj9cbk5.apps.googleusercontent.com",
-  "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",
+  process.env.GMAIL_CLIENT_ID,
+  process.env.GMAIL_CLIENT_SECRET,
   "https://developers.google.com/oauthplayground"
 );
 
 oauth2Client.setCredentials({
-  refresh_token: "1//04QEXCISk27jxCgYIARAAGAQSNwF-L9IrsLpNB4oKRnQALaoPIvgIcr-S4M1bSn9KWSNsyevlu0N7UhhivQIUUx3icYim6QBfZGc",
+  refresh_token: process.env.GMAIL_REFRESH_TOKEN,
 });
 
 async function getAccessToken() {
-  const { token } = await oauth2Client.getAccessToken();
-  console.log("Access Token:", token);
+  try {
+    const { token } = await oauth2Client.getAccessToken();
+    console.log("Access Token:", token);
+  } catch (error) {
+    console.error("Error fetching access token:", error);
+  }
 }
 
 getAccessToken();
