@@ -1,7 +1,5 @@
 const express = require('express');
 const {sendEmail} = require('./emailService')
-
-
 const router = express.Router();
 
 router.post("/send", async (req, res) => {
@@ -15,4 +13,4 @@ router.post("/send", async (req, res) => {
   }
 });
 
-export default router;
+module.exports = router;

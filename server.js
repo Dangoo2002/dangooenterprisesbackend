@@ -7,12 +7,14 @@ require('dotenv').config();
 const bcrypt = require('bcrypt');
 const admin = require('firebase-admin');
 const {sendEmail} = require('./emailService')
+const emailRoutes = require('./emailRoutes'); 
 
 
 // Initialize Express app
 const app = express();
 app.use(express.json());
 app.use(bodyParser.json());
+app.use('/api/email', emailRoutes);
 
 const port = process.env.PORT || 26689;
 
