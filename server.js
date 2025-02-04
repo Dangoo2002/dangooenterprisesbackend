@@ -622,11 +622,24 @@ app.post('/api/orders', async (req, res) => {
       }
     }
 
-    // Insert order into database
+    // Fetch the first name from the signup table based on user_id (or firebase_uid)
     const connection = await pool.getConnection();
+    const [user] = await connection.query(
+      'SELECT first_name FROM signup WHERE user_id = ? OR firebase_uid = ?', 
+      [verifiedUserId, verifiedUserId]
+    );
+
+    if (!user || user.length === 0) {
+      console.log('User not found in signup table');
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const firstName = user[0].first_name;
+
+    // Insert order into database
     const sql = `
-      INSERT INTO orders (user_id, product_id, quantity, total_price, phone, location, order_date, email, name, title)
-      VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)
+      INSERT INTO orders (user_id, product_id, quantity, total_price, phone, location, order_date, email, name, title, first_name)
+      VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)
     `;
     
     const [result] = await connection.query(sql, [
@@ -638,15 +651,15 @@ app.post('/api/orders', async (req, res) => {
       location,
       email,
       name,
-      title
+      title,
+      firstName // Store the first name from signup
     ]);
     connection.release();
 
     console.log('Order placed successfully, Order ID:', result.insertId);
 
-    const firstName = email.split('@')[0];
     const subject = "Order Confirmation - Dangoo Enterprise";
-    const message = `Hello ${firstName},\n\nYou have placed an order for ${title} worth ${total_price}.\nIt will be delivered to "${location}" within 24 hours.\n\nThank you for shopping with us!\n\n- Dangoo Enterprise`;
+    const message = `Hello ${firstName},\n\nYou have placed an order for "${title}" worth $${total_price}.\nIt will be delivered to "${location}" within 24 hours.\n\nThank you for shopping with us!\n\n- Dangoo Enterprise`;
 
     await sendEmail(email, subject, message); // ✅ Correct usage
     console.log(`Order confirmation email sent to ${email}`);
@@ -658,7 +671,6 @@ app.post('/api/orders', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to place order' });
   }
 });
-
 
 app.get('/api/orders', async (req, res) => {
   try {
