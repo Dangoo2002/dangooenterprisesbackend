@@ -9,10 +9,10 @@ const REDIRECT_URI = "https://developers.google.com/oauthplayground";
 
 
 console.log('Env Check:', {
-    CLIENT_ID: !!CLIENT_ID,
-    CLIENT_SECRET: !!CLIENT_SECRET,
-    REFRESH_TOKEN: !!REFRESH_TOKEN
-  });
+  CLIENT_ID: !!CLIENT_ID,
+  CLIENT_SECRET: !!CLIENT_SECRET,
+  REFRESH_TOKEN: !!REFRESH_TOKEN
+});
 
 const oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
 oauth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
