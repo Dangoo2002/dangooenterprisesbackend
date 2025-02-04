@@ -2,6 +2,9 @@ const express = require('express');
 const { sendEmail } = require('./emailService'); // ✅ Correct import
 const router = express.Router();
 
+console.log('routes.js loaded'); // Debug log
+console.log('sendEmail:', sendEmail); // Debug log
+
 router.post("/send", async (req, res) => {
   const { to, subject, text } = req.body;
 

@@ -6,8 +6,7 @@ const multer = require('multer');
 require('dotenv').config();
 const bcrypt = require('bcrypt');
 const admin = require('firebase-admin');
-const {sendEmail} = require('./emailService')
-const emailRoutes = require('./emailRoutes'); 
+const { sendEmail } = require('./emailService');
 
 
 // Initialize Express app
@@ -645,14 +644,11 @@ app.post('/api/orders', async (req, res) => {
 
     console.log('Order placed successfully, Order ID:', result.insertId);
 
-    // **Extract first name from email**
     const firstName = email.split('@')[0];
-
-    // **Send Email Notification**
     const subject = "Order Confirmation - Dangoo Enterprise";
     const message = `Hello ${firstName},\n\nYou have placed an order for "${title}" worth $${total_price}.\nIt will be delivered to "${location}" within 24 hours.\n\nThank you for shopping with us!\n\n- Dangoo Enterprise`;
 
-    await sendEmail(email, subject, message);
+    await sendEmail(email, subject, message); // ✅ Correct usage
     console.log(`Order confirmation email sent to ${email}`);
 
     return res.json({ success: true, message: 'Order placed successfully', order_id: result.insertId });
@@ -662,6 +658,8 @@ app.post('/api/orders', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to place order' });
   }
 });
+
+
 
 app.get('/api/orders', async (req, res) => {
   try {

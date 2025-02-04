@@ -2,6 +2,8 @@ const nodemailer = require("nodemailer");
 const { google } = require("googleapis");
 require('dotenv').config();
 
+console.log('emailService.js loaded'); // Debug log
+
 const CLIENT_ID = process.env.GMAIL_CLIENT_ID;
 const CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET;
 const REFRESH_TOKEN = process.env.GMAIL_REFRESH_TOKEN;
@@ -52,4 +54,4 @@ const sendEmail = async (to, subject, text) => {
   }
 };
 
-module.exports = { sendEmail }; // ✅ Export as an object
+module.exports = { sendEmail }; // ✅ Correct export
