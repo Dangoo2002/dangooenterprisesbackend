@@ -13,7 +13,7 @@ const { sendEmail } = require('./emailService');
 const app = express();
 app.use(express.json());
 app.use(bodyParser.json());
-app.use('/api/email', emailRoutes);
+
 
 const port = process.env.PORT || 26689;
 
@@ -658,7 +658,6 @@ app.post('/api/orders', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to place order' });
   }
 });
-
 
 
 app.get('/api/orders', async (req, res) => {
