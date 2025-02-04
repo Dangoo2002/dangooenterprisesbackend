@@ -6,7 +6,7 @@ const multer = require('multer');
 require('dotenv').config();
 const bcrypt = require('bcrypt');
 const admin = require('firebase-admin');
-const { sendEmail } = require('./emailService');
+const {sendEmail} = require('./emailService')
 
 
 // Initialize Express app

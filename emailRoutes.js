@@ -1,5 +1,5 @@
 const express = require('express');
-const { sendEmail } = require('./emailService');
+const {sendEmail} = require('./emailService')
 
 
 const router = express.Router();
