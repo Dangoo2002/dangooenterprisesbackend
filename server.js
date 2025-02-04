@@ -659,7 +659,7 @@ app.post('/api/orders', async (req, res) => {
     console.log('Order placed successfully, Order ID:', result.insertId);
 
     const subject = "Order Confirmation - Dangoo Enterprise";
-    const message = `Hello ${firstName},\n\nYou have placed an order for "${title}" worth $${total_price}.\nIt will be delivered to "${location}" within 24 hours.\n\nThank you for shopping with us!\n\n- Dangoo Enterprise`;
+    const message = `Hello ${firstName},\n\nYou have placed an order for "${title}" worth $${total_price}.\nIt will be delivered to ${location} within 24 hours.\n\nThank you for shopping with us!\n\n- Dangoo Enterprise`;
 
     await sendEmail(email, subject, message); // ✅ Correct usage
     console.log(`Order confirmation email sent to ${email}`);
@@ -671,6 +671,9 @@ app.post('/api/orders', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to place order' });
   }
 });
+
+
+
 
 app.get('/api/orders', async (req, res) => {
   try {
