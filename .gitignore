@@ -4,3 +4,4 @@
 /venv/
 /config/config/serviceAccountKey.json
 config/serviceKey.json
+getToken.js
