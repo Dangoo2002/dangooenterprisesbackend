@@ -82,36 +82,45 @@ const upload = multer({
 
 // Sign-up endpoint
 app.post('/signup', async (req, res) => {
-  const { email, password, confirmPassword, token, signupMethod, uid } = req.body;
+  const { email, password, confirmPassword, token, signupMethod, uid, firstName } = req.body;
+
   if (signupMethod === 'google' && token) {
     try {
+      // Verify Google token
       const decodedToken = await admin.auth().verifyIdToken(token);
-      const { uid: firebaseUid, email: firebaseEmail } = decodedToken;
-  
+      const { uid: firebaseUid, email: firebaseEmail, name } = decodedToken; // Get name from Firebase
+      const extractedFirstName = name ? name.split(" ")[0] : firebaseEmail.split('@')[0]; // Use Google name or fallback
+
       const connection = await pool.getConnection();
       const [existingUser] = await connection.query(
-        'SELECT * FROM signup WHERE firebase_uid = ?',  // Use firebase_uid here
+        'SELECT * FROM signup WHERE firebase_uid = ?', 
         [firebaseUid]
       );
-  
+
       if (existingUser.length > 0) {
         connection.release();
         return res.status(400).json({ success: false, message: 'User already exists' });
       }
-  
+
       await connection.query(
-        'INSERT INTO signup (firebase_uid, email) VALUES (?, ?)', // Use firebase_uid here too
-        [firebaseUid, firebaseEmail]
+        'INSERT INTO signup (firebase_uid, email, first_name) VALUES (?, ?, ?)', 
+        [firebaseUid, firebaseEmail, extractedFirstName]
       );
-  
+
       connection.release();
-      return res.json({ success: true, message: 'User registered successfully' });
+
+      // Send welcome email
+      const subject = "Welcome to Dangoo Enterprise!";
+      const text = `Hey ${extractedFirstName}, welcome to Dangoo Enterprise! We're excited to have you.`;
+      await sendEmail(firebaseEmail, subject, text);
+
+      return res.json({ success: true, message: 'User registered successfully, email sent!' });
     } catch (error) {
       console.error('Google signup error:', error);
       return res.status(500).json({ success: false, message: 'Google signup failed' });
     }
   }
-  
+
   if (signupMethod === 'email') {
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
     if (password !== confirmPassword) {
@@ -126,27 +135,34 @@ app.post('/signup', async (req, res) => {
     try {
       const connection = await pool.getConnection();
       try {
-        const userRecord = await admin.auth().createUser({ email, password });
+        const userRecord = await admin.auth().createUser({ email, password, displayName: firstName });
         const uid = userRecord.uid;
-  
+        const extractedFirstName = firstName || email.split('@')[0]; // Use given first name or extract from email
+
         const hashedPassword = await bcrypt.hash(password, 10);
         await connection.query(
-          'INSERT INTO signup (user_id, email, password) VALUES (?, ?, ?)',
-          [uid, email, hashedPassword]
+          'INSERT INTO signup (user_id, email, password, first_name) VALUES (?, ?, ?, ?)',
+          [uid, email, hashedPassword, extractedFirstName]
         );
-  
+
         connection.release();
-        return res.json({ success: true, message: 'Registration successful' });
+
+        // Send welcome email
+        const subject = "Welcome to Dangoo Enterprise!";
+        const text = `Hey ${extractedFirstName}, welcome to Dangoo Enterprise! We're excited to have you.`;
+        await sendEmail(email, subject, text);
+
+        return res.json({ success: true, message: 'Registration successful, email sent!' });
       } catch (err) {
         connection.release();
-        console.error('Database/Firebase error:', err); // Log detailed error
-  
+        console.error('Database/Firebase error:', err);
+
         if (err.code === 'ER_DUP_ENTRY') {
           return res.status(400).json({ success: false, message: 'Email already exists' });
         } else if (err.code === 'auth/email-already-exists') {
           return res.status(400).json({ success: false, message: 'Email already exists in Firebase' });
         }
-  
+
         return res.status(500).json({ 
           success: false, 
           message: 'Registration failed: ' + err.message 
@@ -160,9 +176,7 @@ app.post('/signup', async (req, res) => {
       });
     }
   }
-
 });
-
 
 
 

@@ -15,7 +15,12 @@ console.log('Env Check:', {
 });
 
 const oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
-oauth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
+oauth2Client.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN});
+
+if (!oauth2Client.credentials.refresh_token) {
+  console.error("❌ Missing refresh token. Please provide a valid refresh token.");
+  return;
+}
 
 const sendEmail = async (to, subject, text) => {
   try {
